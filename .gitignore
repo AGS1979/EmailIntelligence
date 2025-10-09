@@ -1,0 +1,38 @@
+# --- Secrets and Credentials ---
+# Ignore files containing API keys and other secrets.
+secrets.txt
+.env
+.streamlit/secrets.toml
+
+
+# --- Python ---
+# Ignore virtual environment folders
+venv/
+.venv/
+env/
+*_env/
+
+# Ignore Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+# --- Databases ---
+# Ignore all database files by default...
+*.db
+*.sqlite3
+# ...but make an exception for the master database so it's included in the repo.
+!Master_Company_List.db
+
+
+# --- IDE & Editor Config ---
+# Ignore configuration files from popular editors
+.vscode/
+.idea/
+
+
+# --- Temporary Files & Uploads ---
+# Ignore any uploaded .msg files if they are saved locally
+*.msg

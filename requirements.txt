@@ -1,0 +1,9 @@
+# requirements.txt
+streamlit
+pandas
+extract-msg
+openai
+requests
+msal
+thefuzz
+python-levenshtein

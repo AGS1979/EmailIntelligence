@@ -1,0 +1,404 @@
+short_name,ticker,company_id,country,sector,sub_industry
+AAYAN LEASING,AAYAN,AAYAN KK Equity,KW,Financials,Specialized Finance
+ABDULLAH AL OTHA,4001,AOTHAIM AB Equity,SA,Consumer Staples,Consumer Staples Merchandise Retail
+ABDULLAH SAAD MO,4191,ABOMOATI AB Equity,SA,Consumer Discretionary,Other Specialty Retail
+ABRAJ ENERGY SER,ABRJ,ABRJ OM Equity,OM,Energy,Oil & Gas Drilling
+ABU DHABI COMMER,ADCB,ADCB DH Equity,AE,Financials,Diversified Banks
+ABU DHABI ISLAMI,ADIB,ADIB DH Equity,AE,Financials,Diversified Banks
+ABU DHABI NAT HO,ADNH,ADNH DH Equity,AE,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+ABU DHABI NATION,ADNOCDIST,ADNOCDIS DH Equity,AE,Consumer Discretionary,Automotive Retail
+ABU DHABI PORTS,ADPORTS,ADPORTS DH Equity,AE,Industrials,Marine Ports & Services
+ACWA POWER CO,2082,ACWA AB Equity,SA,Utilities,Independent Power Producers & Energy Traders
+ADES HOLDING CO,2382,ADES AB Equity,SA,Energy,Oil & Gas Drilling
+ADNH CATERING PL,ADNHC,ADNHC DH Equity,AE,Consumer Discretionary,Restaurants
+ADNOC DRILLING C,ADNOCDRILL,ADNOCDRI DH Equity,AE,Energy,Oil & Gas Drilling
+ADNOC GAS PLC,ADNOCGAS,ADNOCGAS DH Equity,AE,Energy,Oil & Gas Refining & Marketing
+ADNOC LOGISTICS,ADNOCLS,ADNOCLS DH Equity,AE,Energy,Oil & Gas Storage & Transportation
+ADVANCED PETROCH,2330,APPC AB Equity,SA,Materials,Commodity Chemicals
+AGILITY,AGLTY,AGLTY KK Equity,KW,Industrials,Air Freight & Logistics
+AGILITY GLOBAL P,AGILITY,AGILITY DH Equity,AE,Industrials,Air Freight & Logistics
+AGTHIA GROUP PJS,AGTHIA,AGTHIA DH Equity,AE,Consumer Staples,Packaged Foods & Meats
+AHLI BANK,ABOB,ABOB OM Equity,OM,Financials,Diversified Banks
+AIR ARABIA PJSC,AIRARABIA,AIRARABI DB Equity,AE,Industrials,Passenger Airlines
+AJMAN BANK PJSC,AJMANBANK,AJMANBAN DB Equity,AE,Financials,Diversified Banks
+AL AHLI BANK KUW,ABK,ABK KK Equity,KW,Financials,Diversified Banks
+AL ANSARI FINANC,ALANSARI,ALANSARI DB Equity,AE,Financials,Transaction & Payment Processing Services
+AL ARABI GROUP H,AGHC,AGHC KK Equity,KW,Industrials,Industrial Conglomerates
+AL BABTAIN POWER,2320,ALBABTAI AB Equity,SA,Industrials,Construction & Engineering
+AL GASSIM INVEST,6020,GACO AB Equity,SA,Consumer Staples,Agricultural Products & Services
+AL JOUF,6070,JADCO AB Equity,SA,Consumer Staples,Agricultural Products & Services
+AL JOUF CEMENT,3091,JOUF AB Equity,SA,Materials,Construction Materials
+AL KATHIRI HOLDI,3008,ALKATHIR AB Equity,SA,Materials,Construction Materials
+AL KHALEEJ TAKAF,AKHI,AKHI QD Equity,QA,Financials,Property & Casualty Insurance
+AL KHALEEJ TRAIN,4290,ALKHLEEJ AB Equity,SA,Consumer Discretionary,Education Services
+AL MAATHER REIT,4334,MAATHER AB Equity,SA,Real Estate,Diversified REITs
+AL MAJED FOR OUD,4165,ALMAJED AB Equity,SA,Consumer Discretionary,Other Specialty Retail
+AL MASANE AL KOB,1322,AMAK AB Equity,SA,Materials,Diversified Metals & Mining
+AL MEERA CONSUM,MERS,MERS QD Equity,QA,Consumer Staples,Consumer Staples Merchandise Retail
+AL MOAMMAR INFOR,7200,MIS AB Equity,SA,Information Technology,IT Consulting & Other Services
+AL RAJHI BANK,1120,RJHI AB Equity,SA,Financials,Diversified Banks
+AL RAJHI REIT,4340,ALRAJHI AB Equity,SA,Real Estate,Diversified REITs
+AL RAJHI TAKAFUL,8230,ARCCI AB Equity,SA,Financials,Multi-line Insurance
+AL RAYAN BANK,MARK,MARK QD Equity,QA,Financials,Diversified Banks
+AL SAGR CO-0PERA,8180,SAGR AB Equity,SA,Financials,Life & Health Insurance
+AL SALAM BANK BS,SALAM,SALAM BI Equity,BH,Financials,Diversified Banks
+AL SEER MARINE S,ASM,ASM DH Equity,AE,Industrials,Aerospace & Defense
+AL TAISEER GROUP,4143,TALCO AB Equity,SA,Materials,Aluminum
+AL YAMAMAH STEEL,1304,YAMAMAH AB Equity,SA,Materials,Steel
+ALAHLI REIT FUND,4338,ALAHLI AB Equity,SA,Real Estate,Diversified REITs
+ALAKARIA,4020,SRECO AB Equity,SA,Real Estate,Diversified Real Estate Activities
+ALAMAR FOODS,6014,ALAMAR AB Equity,SA,Consumer Discretionary,Restaurants
+ALANDALUS PROPER,4320,ALANDALU AB Equity,SA,Real Estate,Real Estate Operating Companies
+AL-ANWAR CERAMIC,AACT,AACT OM Equity,OM,Industrials,Building Products
+ALASEEL CO,4012,ALASEEL AB Equity,SA,Consumer Discretionary,"Apparel, Accessories & Luxury Goods"
+ALDAR PROPERTIES,ALDAR,ALDAR DH Equity,AE,Real Estate,Diversified Real Estate Activities
+AL-DAWAA MEDICAL,4163,ALDAWAA AB Equity,SA,Consumer Staples,Drug Retail
+ALDREES PETROLEU,4200,ALDREES AB Equity,SA,Consumer Discretionary,Automotive Retail
+ALEF EDUCATION H,ALEFEDT,ALEFEDT DH Equity,AE,Consumer Discretionary,Education Services
+AL-ETIHAD COOPER,8170,ALETIHAD AB Equity,SA,Financials,Multi-line Insurance
+ALHAMMAD AB,4013,ALHAMMAD AB Equity,SA,Health Care,Health Care Facilities
+AL-HASSAN G.I. S,1214,SHAKER AB Equity,SA,Industrials,Trading Companies & Distributors
+ALI ALGHANIM SON,ALG,ALG KK Equity,KW,Consumer Discretionary,Automotive Retail
+ALIJARAH HOLDING,NLCS,NLCS QD Equity,QA,Real Estate,Real Estate Development
+ALIMTIAZ INVESTM,ALIMTIAZ,ALIMTIAZ KK Equity,KW,Financials,Multi-Sector Holdings
+ALINMA BANK,1150,ALINMA AB Equity,SA,Financials,Diversified Banks
+ALINMA HOSPITALI,4349,ALINMAHO AB Equity,SA,Real Estate,Hotel & Resort REITs
+ALINMA RETAIL RE,4345,ALINMARE AB Equity,SA,Real Estate,Retail REITs
+ALJAZIRA TAKAFUL,8012,JAZTAKAF AB Equity,SA,Financials,Multi-line Insurance
+ALKHABEER REIT,4348,ALKHABEE AB Equity,SA,Real Estate,Diversified REITs
+ALKHORAYEF WATER,2081,AWPT AB Equity,SA,Utilities,Water Utilities
+ALLIANZ SAUDI FR,8040,ALLIANZ AB Equity,SA,Financials,Multi-line Insurance
+ALLIED COOPERATI,8150,ACIG AB Equity,SA,Financials,Property & Casualty Insurance
+ALMARAI CO,2280,ALMARAI AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+ALMAWARID MANPOW,1833,ALMAWARI AB Equity,SA,Industrials,Human Resource & Employment Services
+AL-MAZAYA HLDG,MAZAYA,MAZAYA KK Equity,KW,Real Estate,Diversified Real Estate Activities
+ALMOOSA HEALTH C,4002,ALMOOSA AB Equity,SA,Health Care,Health Care Facilities
+ALMUNAJEM FOODS,4162,ALMUNAJE AB Equity,SA,Consumer Staples,Food Distributors
+AL-OMRAN INDUSTR,4141,ALOMRAN AB Equity,SA,Industrials,Building Products
+ALSAIF STORES FO,4192,ALSAIF AB Equity,SA,Consumer Discretionary,Homefurnishing Retail
+ALUJAIN CORP,2170,ALCO AB Equity,SA,Materials,Commodity Chemicals
+ALUMINIUM BAHRAI,ALBH,ALBH BI Equity,BH,Materials,Aluminum
+AMANA COOPERATIV,8310,AMANA AB Equity,SA,Financials,Multi-line Insurance
+AMANAT HOLDINGS,AMANAT,AMANAT DB Equity,AE,Financials,Multi-Sector Holdings
+AMERICANA RESTAU,AMR,AMR DH Equity,AE,Consumer Discretionary,Restaurants
+AMLAK FINANCE,AMLAK,AMLAK DB Equity,AE,Financials,Commercial & Residential Mortgage Finance
+AMLAK INTERNATIO,1182,AMLAK AB Equity,SA,Financials,Commercial & Residential Mortgage Finance
+ANAAM INTERNATIO,4061,ANAAM AB Equity,SA,Consumer Staples,Food Distributors
+APEX INVESTMENT,APEX,APEX DH Equity,AE,Materials,Construction Materials
+ARAB NATL BANK,1080,ARNB AB Equity,SA,Financials,Diversified Banks
+ARAB SEA INFORMA,7201,ARABSEA AB Equity,SA,Information Technology,Application Software
+ARABIA INSURANCE,8160,AICC AB Equity,SA,Financials,Multi-line Insurance
+ARABIAN CEMENT,3010,ARCCO AB Equity,SA,Materials,Construction Materials
+ARABIAN CENTRES,4321,CENOMICE AB Equity,SA,Real Estate,Real Estate Operating Companies
+ARABIAN CONTRACT,4071,ALARABIA AB Equity,SA,Communication Services,Advertising
+ARABIAN DRILLING,2381,ARABIAND AB Equity,SA,Energy,Oil & Gas Drilling
+ARABIAN INTERNET,7202,SOLUTION AB Equity,SA,Information Technology,IT Consulting & Other Services
+ARABIAN MILLS FO,2285,ARABIANM AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+ARABIAN PIPES CO,2200,APCO AB Equity,SA,Materials,Steel
+ARABIAN SHIELD,8070,SHIELD AB Equity,SA,Financials,Multi-line Insurance
+ARMAH SPORTS CO,9590,ARMAH AB Equity,SA,Consumer Discretionary,Leisure Facilities
+ARRIYADH DEVELOP,4150,ADCO AB Equity,SA,Real Estate,Real Estate Operating Companies
+ARTEX INDUSTRIAL,2340,ALABDUL AB Equity,SA,Consumer Discretionary,Home Furnishings
+ARZAN FINANCIAL,ARZAN,ARZAN KK Equity,KW,Financials,Consumer Finance
+ASH-SHARQIYAH DE,6060,ASACO AB Equity,SA,Consumer Staples,Agricultural Products & Services
+ASTRA INDUSTRIAL,1212,ASTRA AB Equity,SA,Industrials,Industrial Conglomerates
+ATAA EDUCATIONAL,4292,ATAA AB Equity,SA,Consumer Discretionary,Education Services
+AYYAN INVESTMENT,2140,AADC AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+BAAN HOLDING GRO,1820,AATD AB Equity,SA,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+BAAZEEM TRADING,4051,BAAZEEM AB Equity,SA,Consumer Discretionary,Distributors
+BALADNA,BLDN,BLDN QD Equity,QA,Consumer Staples,Packaged Foods & Meats
+BANK ALBILAD,1140,ALBI AB Equity,SA,Financials,Diversified Banks
+BANK AL-JAZIRA,1020,BJAZ AB Equity,SA,Financials,Diversified Banks
+BANK DHOFAR SAOG,BKDB,BKDB OM Equity,OM,Financials,Diversified Banks
+BANK NIZWA,BKNZ,BKNZ OM Equity,OM,Financials,Regional Banks
+BANK OF SHARJAH,BOS,BOS DH Equity,AE,Financials,Diversified Banks
+BANKMUSCAT SAOGG,BKMB,BKMB OM Equity,OM,Financials,Diversified Banks
+BANQUE SAUDI FR,1050,BSF AB Equity,SA,Financials,Diversified Banks
+BARWA REAL ESTAT,BRES,BRES QD Equity,QA,Real Estate,Diversified Real Estate Activities
+BASIC CHEMICAL I,1210,BCI AB Equity,SA,Materials,Diversified Chemicals
+BATIC INVESTMENT,4110,BATIC AB Equity,SA,Industrials,Industrial Conglomerates
+BAWAN CO,1302,BAWAN AB Equity,SA,Industrials,Building Products
+BBK BSC,BBK,BBK BI Equity,BH,Financials,Diversified Banks
+BEYON BSC,BEYON,BEYON BI Equity,BH,Communication Services,Integrated Telecommunication Services
+BEYOUT HOLDING C,BEYOUT,BEYOUT KK Equity,KW,Industrials,Human Resource & Employment Services
+BINDAWOOD HOLDIN,4161,BINDAWOO AB Equity,SA,Consumer Staples,Consumer Staples Merchandise Retail
+BONYAN REIT,4347,BONYAN AB Equity,SA,Real Estate,Diversified REITs
+BOROUGE,BOROUGE,BOROUGE DH Equity,AE,Materials,Commodity Chemicals
+BOUBYAN BANK K.S,BOUBYAN,BOUBYAN KK Equity,KW,Financials,Diversified Banks
+BOUBYAN PETROCH,BPCC,BPCC KK Equity,KW,Materials,Commodity Chemicals
+BOURSA KUWAIT SE,BOURSA,BOURSA KK Equity,KW,Financials,Financial Exchanges & Data
+BUPA ARABIA,8210,BUPA AB Equity,SA,Financials,Life & Health Insurance
+BURGAN BANK,BURG,BURG KK Equity,KW,Financials,Diversified Banks
+BURJEEL HOLDINGS,BURJEEL,BURJEEL DH Equity,AE,Health Care,Health Care Facilities
+BURUJ COOPERATIV,8270,BURUJ AB Equity,SA,Financials,Property & Casualty Insurance
+CATRION CATERING,6004,CATERING AB Equity,SA,Industrials,Diversified Support Services
+CITY CEMENT CO,3003,CITYC AB Equity,SA,Materials,Construction Materials
+CO FOR COOPERATI,8010,TAWUNIYA AB Equity,SA,Financials,Life & Health Insurance
+COMBINED GROUP C,CGC,CGC KK Equity,KW,Industrials,Construction & Engineering
+COMMERCIAL BANK,CBQK,CBQK QD Equity,QA,Financials,Diversified Banks
+COMMERCIAL REAL,ALTIJARIA,ALTIJARI KK Equity,KW,Real Estate,Diversified Real Estate Activities
+DALLAH HEALTHCAR,4018,DALLAH AB Equity,SA,Health Care,Health Care Facilities
+DANA GAS,DANA,DANA DH Equity,AE,Energy,Integrated Oil & Gas
+DAR AL ARKAN REA,4300,ALARKAN AB Equity,SA,Real Estate,Real Estate Development
+DERAYAH REIT,4339,DERAYAHR AB Equity,SA,Real Estate,Diversified REITs
+DEVELOPMENT WORK,6013,DWF AB Equity,SA,Consumer Discretionary,Restaurants
+DEYAAR DEVELOPME,DEYAAR,DEYAAR DB Equity,AE,Real Estate,Real Estate Development
+DOHA BANK QPSC,DHBK,DHBK QD Equity,QA,Financials,Diversified Banks
+DR SULAIMAN AL H,4004,SULAIMAN AB Equity,SA,Health Care,Health Care Facilities
+DR. SOLIMAN ABDU,4017,FAKEEHCA AB Equity,SA,Health Care,Health Care Facilities
+DUBAI ELECTRICIT,DEWA,DEWA DB Equity,AE,Utilities,Multi-Utilities
+DUBAI FINANCIAL,DFM,DFM DB Equity,AE,Financials,Financial Exchanges & Data
+DUBAI INVESTMENT,DIC,DIC DB Equity,AE,Industrials,Industrial Conglomerates
+DUBAI ISLAMIC,DIB,DIB DB Equity,AE,Financials,Diversified Banks
+DUBAI TAXI CO PJ,DTC,DTC DB Equity,AE,Industrials,Passenger Ground Transportation
+DUKHAN BANK,DUBK,DUBK QD Equity,QA,Financials,Regional Banks
+E7 GROUP PJSC,E7,E7 DH Equity,AE,Industrials,Commercial Printing
+EAST PIPES INTEG,1321,EASTPIPE AB Equity,SA,Materials,Steel
+EASTERN CEMENT,3080,EACCO AB Equity,SA,Materials,Construction Materials
+ELECTRICAL INDUS,1303,EIC AB Equity,SA,Industrials,Electrical Components & Equipment
+ELM CO,7203,ELM AB Equity,SA,Information Technology,IT Consulting & Other Services
+EMAAR DEVELOPMEN,EMAARDEV,EMAARDEV DB Equity,AE,Real Estate,Real Estate Development
+EMAAR ECONOMIC C,4220,EMAAR AB Equity,SA,Real Estate,Real Estate Development
+EMAAR PROP PJSC,EMAAR,EMAAR DB Equity,AE,Real Estate,Real Estate Development
+EMIRATES CENTRAL,EMPOWER,EMPOWER DB Equity,AE,Utilities,Water Utilities
+EMIRATES INTEGRA,DU,DU DB Equity,AE,Communication Services,Integrated Telecommunication Services
+EMIRATES NBD PJS,EMIRATESNBD,EMIRATES DB Equity,AE,Financials,Diversified Banks
+EMSTEEL BUILDING,EMSTEEL,EMSTEEL DH Equity,AE,Materials,Construction Materials
+ESHRAQ INVESTMEN,ESHRAQ,ESHRAQ DH Equity,AE,Real Estate,Real Estate Development
+ESTITHMAR HOLDIN,IGRD,IGRD QD Equity,QA,Industrials,Construction & Engineering
+ETIHAD ATHEEB TE,7040,EAT AB Equity,SA,Communication Services,Integrated Telecommunication Services
+ETIHAD ETISALAT,7020,EEC AB Equity,SA,Communication Services,Wireless Telecommunication Services
+ETISALAT,EAND,EAND DH Equity,AE,Communication Services,Integrated Telecommunication Services
+EZDAN HOLDING GR,ERES,ERES QD Equity,QA,Real Estate,Real Estate Operating Companies
+FAWAZ ABDULAZIZ,4240,CENOMI AB Equity,SA,Consumer Discretionary,Apparel Retail
+FERTIGLOBE PLC,FERTIGLB,FERTIGLB DH Equity,AE,Materials,Fertilizers & Agricultural Chemicals
+FILING & PACKING,2180,FIPCO AB Equity,SA,Materials,Paper & Plastic Packaging Products & Materials
+FIRST ABU DHABI,FAB,FAB DH Equity,AE,Financials,Diversified Banks
+FIRST MILLING CO,2283,FIRSTMIL AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+FITAIHI HOLDING,4180,AHFCO AB Equity,SA,Consumer Discretionary,"Apparel, Accessories & Luxury Goods"
+FOURTH MILLING C,2286,FOURTHMI AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+FUTURE CARE TRAD,9544,FUTURECA AB Equity,SA,Health Care,Health Care Services
+GFH FINANCIAL GR,GFH,GFH BI Equity,BH,Financials,Investment Banking & Brokerage
+GHITHA HOLDING P,GHITHA,GHITHA DH Equity,AE,Consumer Staples,Food Distributors
+GULF BANK,GBK,GBK KK Equity,KW,Financials,Diversified Banks
+GULF CABLES & EL,CABLE,CABLE KK Equity,KW,Industrials,Electrical Components & Equipment
+GULF GENERAL COO,8260,GGCI AB Equity,SA,Financials,Property & Casualty Insurance
+GULF INSURANCE G,8250,GIG AB Equity,SA,Financials,Multi-line Insurance
+GULF INTERNATION,GISS,GISS QD Equity,QA,Energy,Oil & Gas Drilling
+GULF NAVIGATION,GULFNAV,GULFNAV DB Equity,AE,Industrials,Marine Transportation
+GULF UNION COOPE,8120,GULFUNI AB Equity,SA,Financials,Multi-line Insurance
+GULF WAREHOUSING,GWCS,GWCS QD Equity,QA,Industrials,Air Freight & Logistics
+HALWANI BROS CO,6001,HB AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+HEAVY ENGINEERIN,SHIP,SHIP KK Equity,KW,Energy,Oil & Gas Equipment & Services
+HERFY FOOD SERVI,6002,HERFY AB Equity,SA,Consumer Discretionary,Restaurants
+HUMANSOFT,HUMANSOFT,HUMANSFT KK Equity,KW,Consumer Discretionary,Education Services
+IFA HOTELS & RES,IFAHR,IFAHR KK Equity,KW,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+INDUSTRIES QATAR,IQCD,IQCD QD Equity,QA,Industrials,Industrial Conglomerates
+INTEGRATED HOLDI,INTEGRATED,INTEGRAT KK Equity,KW,Industrials,Trading Companies & Distributors
+INTL FINANCIAL,IFA,IFA KK Equity,KW,Financials,Asset Management & Custody Banks
+INVESTCORP CAPIT,ICAP,ICAP DH Equity,AE,Financials,Asset Management & Custody Banks
+JABAL OMAR DEVEL,4250,JOMAR AB Equity,SA,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+JAHEZ INTERNATIO,6017,JAHEZ AB Equity,SA,Consumer Discretionary,Restaurants
+JAMJOOM PHARMACE,4015,JAMJOOMP AB Equity,SA,Health Care,Pharmaceuticals
+JARIR MARKETING,4190,JARIR AB Equity,SA,Consumer Discretionary,Other Specialty Retail
+JAZAN DEVELOPMEN,6090,GIZACO AB Equity,SA,Consumer Staples,Agricultural Products & Services
+JAZEERA AIRWAYS,JAZEERA,JAZEERA KK Equity,KW,Industrials,Passenger Airlines
+KINGDOM HOLDING,4280,KINGDOM AB Equity,SA,Financials,Multi-Sector Holdings
+KNOWLEDGE ECONOM,4310,KEC AB Equity,SA,Real Estate,Real Estate Development
+KUWAIT CEMENT CO,KCEM,KCEM KK Equity,KW,Materials,Construction Materials
+KUWAIT FINANCE,KFH,KFH KK Equity,KW,Financials,Diversified Banks
+KUWAIT INTERNATI,KIB,KIB KK Equity,KW,Financials,Diversified Banks
+KUWAIT INVESTMEN,KINV,KINV KK Equity,KW,Financials,Diversified Capital Markets
+KUWAIT PROJECTS,KPROJ,KPROJ KK Equity,KW,Financials,Diversified Banks
+KUWAIT REAL EST,KRE,KRE KK Equity,KW,Real Estate,Real Estate Operating Companies
+KUWAIT TELECOMMU,STC,STC KK Equity,KW,Communication Services,Wireless Telecommunication Services
+L'AZURDE CO FOR,4011,LAZURDE AB Equity,SA,Consumer Discretionary,"Apparel, Accessories & Luxury Goods"
+LEEJAM SPORTS CO,1830,LEEJAM AB Equity,SA,Consumer Discretionary,Leisure Facilities
+LESHA BANK LLC,QFBQ,QFBQ QD Equity,QA,Financials,Regional Banks
+LULU RETAIL HOLD,LULU,LULU DH Equity,AE,Consumer Staples,Consumer Staples Merchandise Retail
+LUMI RENTAL CO,4262,LUMI AB Equity,SA,Industrials,Passenger Ground Transportation
+MAADANIYAH,2220,NMMCC AB Equity,SA,Materials,Steel
+MABANEE CO KPSC,MABANEE,MABANEE KK Equity,KW,Real Estate,Real Estate Operating Companies
+MAHARAH HUMAN RE,1831,MAHARAH AB Equity,SA,Industrials,Human Resource & Employment Services
+MAIR GROUP PJSC,MAIR,MAIR DH Equity,AE,Consumer Staples,Food Retail
+MAKKAH CONSTRUCT,4100,MCDCO AB Equity,SA,Real Estate,Diversified Real Estate Activities
+MALATH INSURANCE,8020,MALATH AB Equity,SA,Financials,Property & Casualty Insurance
+MANAZEL REAL EST,MANAZEL,MANAZEL DH Equity,AE,Real Estate,Real Estate Development
+MANNAI CORPORATI,MCCS,MCCS QD Equity,QA,Industrials,Industrial Conglomerates
+MAZAYA,MRDS,MRDS QD Equity,QA,Real Estate,Diversified Real Estate Activities
+MBC GROUP CJSC,4072,MBCGROUP AB Equity,SA,Communication Services,Broadcasting
+MEDICARE GROUP,MCGS,MCGS QD Equity,QA,Health Care,Health Care Facilities
+MEDITERRANEAN &,8030,MEDGULF AB Equity,SA,Financials,Multi-line Insurance
+MEEZA QSTP LLC,MEZA,MEZA QD Equity,QA,Information Technology,IT Consulting & Other Services
+MESAIEED PETROCH,MPHC,MPHC QD Equity,QA,Materials,Commodity Chemicals
+METHANOL CHEMICA,2001,CHEMANOL AB Equity,SA,Materials,Diversified Chemicals
+MEZZAN HOLDING C,MEZZAN,MEZZAN KK Equity,KW,Consumer Staples,Packaged Foods & Meats
+MIAHONA,2084,MIAHONA AB Equity,SA,Utilities,Water Utilities
+MIDDLE EAST PAPE,1202,MEPC AB Equity,SA,Materials,Paper Products
+MIDDLE EAST PHAR,4016,AVALONPH AB Equity,SA,Health Care,Pharmaceuticals
+MIDDLE EAST SPEC,2370,MESC AB Equity,SA,Industrials,Electrical Components & Equipment
+MOBILE TELECOMMU,7030,ZAINKSA AB Equity,SA,Communication Services,Wireless Telecommunication Services
+MODERN MILLS CO,2284,MODERNMI AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+MODON HOLDING,MODON,MODON DH Equity,AE,Industrials,Industrial Conglomerates
+MORABAHA MARINA,4082,MRNA AB Equity,SA,Financials,Consumer Finance
+MOUWASAT MEDICAL,4005,MOUWASAT AB Equity,SA,Health Care,Health Care Facilities
+MULKIA GULF REAL,4336,MULKIA AB Equity,SA,Real Estate,Diversified REITs
+MULTIPLY GROUP,MULTIPLY,MULTIPLY DH Equity,AE,Industrials,Industrial Conglomerates
+MUSHARAKA REIT,4335,MUSHREIT AB Equity,SA,Real Estate,Diversified REITs
+NAHDI MEDICAL CO,4164,NAHDI AB Equity,SA,Consumer Staples,Drug Retail
+NAJRAN CEMENT CO,3002,NAJRAN AB Equity,SA,Materials,Construction Materials
+NAMA CHEMICALS C,2210,NAMA AB Equity,SA,Materials,Commodity Chemicals
+NAQI WATER CO,2282,NAQI AB Equity,SA,Consumer Staples,Soft Drinks & Non-alcoholic Beverages
+NASEEJ INTERNATI,1213,NASEEJ AB Equity,SA,Consumer Discretionary,Home Furnishings
+NATIONAL AGRICUL,6010,NADEC AB Equity,SA,Consumer Staples,Agricultural Products & Services
+NATIONAL BANK OF,NBOB,NBOB OM Equity,OM,Financials,Diversified Banks
+NATIONAL CO FOR,4291,NCLE AB Equity,SA,Consumer Discretionary,Education Services
+NATIONAL CO/THE,2150,ZOUJAJ AB Equity,SA,Materials,"Metal, Glass & Plastic Containers"
+NATIONAL GAS & I,2080,NGIC AB Equity,SA,Utilities,Gas Utilities
+NATIONAL GYPSUM,2090,NGCO AB Equity,SA,Materials,Construction Materials
+NATIONAL MEDICAL,4007,CARE AB Equity,SA,Health Care,Health Care Facilities
+NATIONAL MOBILE,OOREDOO,OOREDOO KK Equity,KW,Communication Services,Wireless Telecommunication Services
+NATIONAL SHIPPIN,4030,NSCSA AB Equity,SA,Energy,Oil & Gas Storage & Transportation
+NATL BANK BAHR,NBB,NBB BI Equity,BH,Financials,Diversified Banks
+NATL BANK KUWAIT,NBK,NBK KK Equity,KW,Financials,Diversified Banks
+NATL CORP TOU HO,NCTH,NCTH DH Equity,AE,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+NATL INDUSTRIES,NIND,NIND KK Equity,KW,Industrials,Industrial Conglomerates
+NATL INVESTMENTS,NINV,NINV KK Equity,KW,Financials,Multi-Sector Holdings
+NATL REAL ESTATE,NRE,NRE KK Equity,KW,Real Estate,Diversified Real Estate Activities
+NAYIFAT FINANCE,4081,NAYIFAT AB Equity,SA,Financials,Consumer Finance
+NIC,2060,NIC AB Equity,SA,Materials,Commodity Chemicals
+NICE ONE BEAUTY,4193,NICEONE AB Equity,SA,Consumer Discretionary,Other Specialty Retail
+NMDC ENERGY,NMDCENR,NMDCENR DH Equity,AE,Energy,Oil & Gas Equipment & Services
+NMDC GROUP,NMDC,NMDC DH Equity,AE,Industrials,Construction & Engineering
+NOOR FINANCIAL I,NOOR,NOOR KK Equity,KW,Financials,Asset Management & Custody Banks
+NORTHERN REGION,3004,NORTHCEM AB Equity,SA,Materials,Construction Materials
+OMAN CABLES INDU,OCAI,OCAI OM Equity,OM,Industrials,Electrical Components & Equipment
+OMAN CEMENT CO,OCOI,OCOI OM Equity,OM,Materials,Construction Materials
+OMAN FLOUR MILLS,OFMI,OFMI OM Equity,OM,Consumer Staples,Packaged Foods & Meats
+OMAN TELECOMMUNI,OTEL,OTEL OM Equity,OM,Communication Services,Integrated Telecommunication Services
+OMINVEST,OMVS,OMVS OM Equity,OM,Financials,Diversified Financial Services
+OOREDOO,ORDS,ORDS OM Equity,OM,Communication Services,Wireless Telecommunication Services
+OOREDOO QSC,ORDS,ORDS QD Equity,QA,Communication Services,Integrated Telecommunication Services
+OQ BASE INDUSTRI,OQBI,OQBI OM Equity,OM,Materials,Diversified Chemicals
+OQ GAS NETWORKS,OQGN,OQGN OM Equity,OM,Energy,Oil & Gas Storage & Transportation
+ORASCOM CONSTRUC,ORAS,ORAS EC Equity,AE,Industrials,Construction & Engineering
+PARKIN CO PJSC,PARKIN,PARKIN DB Equity,AE,Industrials,Environmental & Facilities Services
+PERFECT PRESENTA,7204,2P AB Equity,SA,Information Technology,IT Consulting & Other Services
+PHOENIX GROUP PL,PHX,PHX DH Equity,AE,Information Technology,Application Software
+PHOENIX POWER CO,PHPC,PHPC OM Equity,OM,Utilities,Independent Power Producers & Energy Traders
+POWER & WATER UT,2083,MARAFIQ AB Equity,SA,Utilities,Multi-Utilities
+PRESIGHT AI HOLD,PRESIGHT,PRESIGHT DH Equity,AE,Information Technology,IT Consulting & Other Services
+PURE HEALTH HOLD,PUREHEALTH,PUREHEAL DH Equity,AE,Health Care,Health Care Facilities
+QASSIM CEMENT,3040,QACCO AB Equity,SA,Materials,Construction Materials
+QATAR ALUMINUM M,QAMC,QAMC QD Equity,QA,Materials,Aluminum
+QATAR ELECTRICIT,QEWS,QEWS QD Equity,QA,Utilities,Multi-Utilities
+QATAR FUEL QSC,QFLS,QFLS QD Equity,QA,Energy,Oil & Gas Refining & Marketing
+QATAR GAS TRANSP,QGTS,QGTS QD Equity,QA,Energy,Oil & Gas Storage & Transportation
+QATAR INTERNATIO,QIIK,QIIK QD Equity,QA,Financials,Diversified Banks
+QATAR ISLAMIC BA,QIBK,QIBK QD Equity,QA,Financials,Diversified Banks
+QATAR ISLAMIC IN,QISI,QISI QD Equity,QA,Financials,Multi-line Insurance
+QATAR NATIONAL,QNCD,QNCD QD Equity,QA,Materials,Construction Materials
+QATAR NATIONAL B,QNBK,QNBK QD Equity,QA,Financials,Diversified Banks
+QATAR NAVIGATION,QNNS,QNNS QD Equity,QA,Industrials,Marine Transportation
+QATARI INVESTORS,QIGD,QIGD QD Equity,QA,Materials,Construction Materials
+RABIGH REFINING,2380,PETROR AB Equity,SA,Energy,Oil & Gas Refining & Marketing
+RAK PROPERTIES,RAKPROP,RAKPROP DH Equity,AE,Real Estate,Real Estate Development
+RAS AL KHAIMAH C,RAKCEC,RAKCEC DH Equity,AE,Industrials,Building Products
+RASAN INFORMATIO,8313,RASAN AB Equity,SA,Financials,Insurance Brokers
+RASIYAT HOLDING,RASIYAT,RASIYAT KK Equity,KW,Financials,Asset Management & Custody Banks
+RAYDAN FOOD CO,6012,RAYDAN AB Equity,SA,Consumer Discretionary,Restaurants
+RENAISSANCE SERV,RNSS,RNSS OM Equity,OM,Industrials,Diversified Support Services
+RETAL URBAN DEVE,4322,RETAL AB Equity,SA,Real Estate,Real Estate Development
+RIYAD BANK,1010,RIBL AB Equity,SA,Financials,Diversified Banks
+RIYAD REIT FUND,4330,RYDREIT AB Equity,SA,Real Estate,Diversified REITs
+RIYADH CABLES GR,4142,RIYADHCA AB Equity,SA,Industrials,Electrical Components & Equipment
+RIYADH CEMENT CO,3092,SAWCEM AB Equity,SA,Materials,Construction Materials
+SABIC,2010,SABIC AB Equity,SA,Materials,Commodity Chemicals
+SABIC AGRI,2020,SAFCO AB Equity,SA,Materials,Fertilizers & Agricultural Chemicals
+SADAFCO,2270,SADAFCO AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+SADR LOGISTICS C,1832,SADR AB Equity,SA,Industrials,Office Services & Supplies
+SAHARA INTERNATI,2310,SIPCHEM AB Equity,SA,Materials,Commodity Chemicals
+SAL SAUDI LOGIST,4263,SAL AB Equity,SA,Industrials,Air Freight & Logistics
+SALAM INTERNATIO,SIIS,SIIS QD Equity,QA,Financials,Multi-Sector Holdings
+SALAMA COOPERATI,8050,SALAMA AB Equity,SA,Financials,Multi-line Insurance
+SALHIAHIA REAL,SRE,SRE KK Equity,KW,Real Estate,Real Estate Operating Companies
+SALIK CO PJSC,SALIK,SALIK DB Equity,AE,Industrials,Highways & Railtracks
+SAPTCO,4040,SAPTCO AB Equity,SA,Industrials,Passenger Ground Transportation
+SASCO,4050,SACO AB Equity,SA,Consumer Discretionary,Automotive Retail
+SAUDI ADVANCED I,2120,SAIC AB Equity,SA,Financials,Multi-Sector Holdings
+SAUDI ARABIA REF,2030,SARCO AB Equity,SA,Energy,Oil & Gas Refining & Marketing
+SAUDI ARABIAN AM,2160,SAAC AB Equity,SA,Industrials,Industrial Machinery & Supplies & Components
+SAUDI ARABIAN MI,1211,MAADEN AB Equity,SA,Materials,Diversified Metals & Mining
+SAUDI ARAMCO BAS,2223,LUBEREF AB Equity,SA,Materials,Commodity Chemicals
+SAUDI AWWAL BANK,1060,SABB AB Equity,SA,Financials,Diversified Banks
+SAUDI CABLE CO,2110,SCACO AB Equity,SA,Industrials,Electrical Components & Equipment
+SAUDI CEMENT,3030,SACCO AB Equity,SA,Materials,Construction Materials
+SAUDI CERAMIC CO,2040,SCERCO AB Equity,SA,Industrials,Building Products
+SAUDI CHEMICAL C,2230,CHEMICAL AB Equity,SA,Health Care,Health Care Distributors
+SAUDI CO FOR HAR,4008,SCH AB Equity,SA,Consumer Discretionary,Home Improvement Retail
+SAUDI ELECTRICIT,5110,SECO AB Equity,SA,Utilities,Electric Utilities
+SAUDI FISHERIES,6050,SFICO AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+SAUDI GERMAN HEA,4009,MEH AB Equity,SA,Health Care,Health Care Facilities
+SAUDI GROUND SER,4031,SGS AB Equity,SA,Industrials,Airport Services
+SAUDI IND INVEST,2250,SIIG AB Equity,SA,Materials,Commodity Chemicals
+SAUDI INDUS EXPO,4140,SIECO AB Equity,SA,Industrials,Trading Companies & Distributors
+SAUDI INVESTMENT,1030,SIBC AB Equity,SA,Financials,Diversified Banks
+SAUDI KAYAN PETR,2350,KAYAN AB Equity,SA,Materials,Commodity Chemicals
+SAUDI MANPOWER S,1834,SMASCO AB Equity,SA,Industrials,Human Resource & Employment Services
+SAUDI MARKETING,4006,SMARKETI AB Equity,SA,Consumer Staples,Food Retail
+SAUDI NATIONAL B,1180,SNB AB Equity,SA,Financials,Diversified Banks
+SAUDI PAPER MANU,2300,SPM AB Equity,SA,Materials,Paper Products
+SAUDI PHARMACEUT,2070,SPIMACO AB Equity,SA,Health Care,Pharmaceuticals
+SAUDI RE FOR COO,8200,SAUDIRE AB Equity,SA,Financials,Reinsurance
+SAUDI RESEARCH &,4210,RESEARCH AB Equity,SA,Communication Services,Publishing
+SAUDI STEEL PIPE,1320,SSP AB Equity,SA,Materials,Steel
+SAUDI TADAWUL GR,1111,TADAWULG AB Equity,SA,Financials,Financial Exchanges & Data
+SAUDI TELECOM CO,7010,STC AB Equity,SA,Communication Services,Integrated Telecommunication Services
+SAUDI VITRIFIED,2360,SVCP AB Equity,SA,Materials,Construction Materials
+SAVOLA,2050,SAVOLA AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+SCIENTIFIC & MED,4014,EQUIPMEN AB Equity,SA,Health Care,Health Care Services
+SEDCO CAPITAL RE,4344,SEDCO AB Equity,SA,Real Estate,Diversified REITs
+SEERA GROUP HOLD,1810,SEERA AB Equity,SA,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+SEMBCORP SALALAH,SSPW,SSPW OM Equity,OM,Utilities,Independent Power Producers & Energy Traders
+SHAMAL AZ-ZOUR A,AZNOULA,AZNOULA KK Equity,KW,Utilities,Independent Power Producers & Energy Traders
+SHAMS,4170,TECO AB Equity,SA,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+SHARJAH ISLAMIC,SIB,SIB DH Equity,AE,Financials,Diversified Banks
+SHL FINANCE CO,1183,SHL AB Equity,SA,Financials,Commercial & Residential Mortgage Finance
+SHUAA CAPITAL,SHUAA,SHUAA DB Equity,AE,Financials,Diversified Capital Markets
+SIDC,2130,SIDC AB Equity,SA,Consumer Discretionary,Home Furnishings
+SINAD HOLDING,4080,ATTMCO AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+SOHAR INTERNATIO,BKSB,BKSB OM Equity,OM,Financials,Diversified Banks
+SOUTHERN PROVINC,3050,SOCCO AB Equity,SA,Materials,Construction Materials
+SPACE42 PLC,SPACE42,SPACE42 DH Equity,AE,Communication Services,Alternative Carriers
+SPINNEYS 1961 HO,SPINNEYS,SPINNEYS DB Equity,AE,Consumer Staples,Food Retail
+SUMOU REAL ESTAT,4323,SRE AB Equity,SA,Real Estate,Real Estate Development
+SUSTAINED INFRAS,2190,SISCO AB Equity,SA,Industrials,Marine Ports & Services
+TAALEEM HOLDINGS,TAALEEM,TAALEEM DB Equity,AE,Consumer Discretionary,Education Services
+TABREED,TABREED,TABREED DB Equity,AE,Utilities,Water Utilities
+TABUK AGRICULTUR,6040,TAACO AB Equity,SA,Consumer Staples,Agricultural Products & Services
+TABUK CEMENT CO,3090,TACCO AB Equity,SA,Materials,Construction Materials
+TAIBA INVESTMENT,4090,TAIBA AB Equity,SA,Real Estate,Diversified Real Estate Activities
+TAKWEEN ADVANCED,1201,TAKWEEN AB Equity,SA,Materials,"Metal, Glass & Plastic Containers"
+TALABAT HOLDING,TALABAT,TALABAT DB Equity,AE,Consumer Discretionary,Restaurants
+TAMKEEN HUMAN RE,1835,TAMKEEN AB Equity,SA,Industrials,Human Resource & Employment Services
+TANMIAH FOOD CO,2281,TANMIAH AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+TECOM GROUP PJSC,TECOM,TECOM DB Equity,AE,Real Estate,Real Estate Operating Companies
+THEEB RENT A CAR,4261,THEEB AB Equity,SA,Industrials,Passenger Ground Transportation
+UMM AL-QURA CEME,3005,UACC AB Equity,SA,Materials,Construction Materials
+UNION PROPERTIES,UPP,UPP DB Equity,AE,Real Estate,Diversified Real Estate Activities
+UNITED DEVELOPME,UDCD,UDCD QD Equity,QA,Real Estate,Real Estate Development
+UNITED ELECTRONI,4003,EXTRA AB Equity,SA,Consumer Discretionary,Computer & Electronics Retail
+UNITED INTERNATI,4260,BUDGET AB Equity,SA,Industrials,Passenger Ground Transportation
+UNITED WIRE FACT,1301,ASLAK AB Equity,SA,Materials,Steel
+VODAFONE QATAR,VFQS,VFQS QD Equity,QA,Communication Services,Wireless Telecommunication Services
+WAFRAH FOR INDUS,2100,FPCO AB Equity,SA,Consumer Staples,Packaged Foods & Meats
+WAHA CAPITAL,WAHA,WAHA DH Equity,AE,Financials,Asset Management & Custody Banks
+WALAA COOPERATIV,8060,WALAA AB Equity,SA,Financials,Multi-line Insurance
+WARBA BANK,WARBABANK,WARBABAN KK Equity,KW,Financials,Diversified Banks
+WATANIYA INSURAN,8300,WATAN AB Equity,SA,Financials,Multi-line Insurance
+WIDAM FOOD CO,WDAM,WDAM QD Equity,QA,Consumer Staples,Packaged Foods & Meats
+YAMAMA CEMENT CO,3020,YACCO AB Equity,SA,Materials,Construction Materials
+YANBU CEMENT CO,3060,YNCCO AB Equity,SA,Materials,Construction Materials
+YANBU NATIONAL P,2290,YANSAB AB Equity,SA,Materials,Commodity Chemicals
+ZAHRAT AL WAHA F,3007,OASIS AB Equity,SA,Materials,"Metal, Glass & Plastic Containers"
+ZAMIL INDUSTRIAL,2240,ZIIC AB Equity,SA,Materials,Steel
