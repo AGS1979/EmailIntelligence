@@ -388,7 +388,7 @@ def process_emails(email_source, source_type):
         return
 
     if not master_brokers:
-         st.warning(f"Warning: The 'master_brokers' table in '{MASTER_DB_NAME}' is empty. Broker name extraction may be less accurate.")
+        st.warning(f"Warning: The 'master_brokers' table in '{MASTER_DB_NAME}' is empty. Broker name extraction may be less accurate.")
 
     status_container = st.container() 
     progress_bar = st.progress(0, text="Initializing...")
@@ -442,6 +442,22 @@ def process_emails(email_source, source_type):
             insert_into_db(report)
 
     progress_bar.progress(1.0, text="Processing complete!")
+    
+    # --- NEW CODE START ---
+    # Display a success message and the download button after processing
+    st.success("✅ Processing complete! The database has been updated.")
+    
+    # Check if the output database file exists before offering it for download
+    if os.path.exists(OUTPUT_DB_NAME):
+        with open(OUTPUT_DB_NAME, "rb") as fp:
+            st.download_button(
+                label="Download Extracted Data (SQLite DB)",
+                data=fp,
+                file_name=OUTPUT_DB_NAME,
+                mime="application/octet-stream"
+            )
+    # --- NEW CODE END ---
+
 
 # --- MAIN UI ---
 def main():
@@ -494,6 +510,19 @@ def main():
         if all_data_df.empty:
             st.warning("The extracted data table is empty. Please process some emails first.")
         else:
+            # --- NEW CODE START ---
+            # Add a download button at the top of the query tab
+            if os.path.exists(OUTPUT_DB_NAME):
+                with open(OUTPUT_DB_NAME, "rb") as fp:
+                    st.download_button(
+                        label="Download Full Database (SQLite DB)",
+                        data=fp,
+                        file_name=OUTPUT_DB_NAME,
+                        mime="application/octet-stream",
+                        key="download_db_query_tab" # Use a unique key
+                    )
+            # --- NEW CODE END ---
+
             # Display filter widgets
             with st.expander("Filter Options", expanded=True):
                 col1, col2 = st.columns(2)
