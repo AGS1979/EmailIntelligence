@@ -524,7 +524,6 @@ def main():
             # --- NEW CODE END ---
 
             # Display filter widgets
-            with st.expander("Filter Options", expanded=True):
                 col1, col2 = st.columns(2)
 
                 with col1:
