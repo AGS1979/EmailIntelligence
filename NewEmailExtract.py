@@ -12,6 +12,7 @@ from openai import OpenAI
 import requests
 import msal
 from thefuzz import fuzz, process
+from sqlalchemy import create_engine, text
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -196,30 +197,39 @@ try:
     AZURE_CLIENT_ID = st.secrets["AZURE_CLIENT_ID"]
     AZURE_TENANT_ID = st.secrets["AZURE_TENANT_ID"]
     AZURE_CLIENT_SECRET = st.secrets["AZURE_CLIENT_SECRET"]
+    DB_CONNECTION_STRING = st.secrets["DB_CONNECTION_STRING"]
 except KeyError as e:
-    st.error(f"Configuration key not found in secrets.toml: {e}")
+    st.error(f"Configuration key not found in Streamlit Secrets: {e}")
     st.stop()
 
 # --- CONSTANTS ---
 MASTER_DB_NAME = "Master_Company_List.db"
-OUTPUT_DB_NAME = "financial_emails.db"
 AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}"
 SCOPE = ["https://graph.microsoft.com/.default"]
 
+# --- NEW DATABASE SETUP ---
+# Create a reusable database engine from the connection string in Streamlit Secrets
+engine = create_engine(DB_CONNECTION_STRING)
+
 # --- DATABASE FUNCTIONS ---
 def setup_output_database():
-    with sqlite3.connect(OUTPUT_DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS email_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, Country TEXT, Sector TEXT,
-            Company TEXT, Ticker TEXT, Category TEXT, ContentType TEXT, BrokerName TEXT,
-            EmailSubject TEXT, EmailContent TEXT, MatchStatus TEXT,
-            ProcessedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        conn.commit()
+    # This function is no longer needed.
+    # The table should be created one time in the Supabase SQL Editor using the following command:
+    # CREATE TABLE IF NOT EXISTS email_data (
+    #     id SERIAL PRIMARY KEY, Country TEXT, Sector TEXT,
+    #     Company TEXT, Ticker TEXT, Category TEXT, ContentType TEXT, BrokerName TEXT,
+    #     EmailSubject TEXT, EmailContent TEXT, MatchStatus TEXT,
+    #     ProcessedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    # );
+    pass
 
-def query_db(db_name, query, params=None):
+def query_db(query, params=None):
+    # This function now queries the permanent cloud database
+    with engine.connect() as conn:
+        return pd.read_sql_query(sql=text(query), con=conn, params=params)
+
+# This function reads the local master DB file from the repository
+def query_local_db(db_name, query, params=None):
     with sqlite3.connect(db_name) as conn:
         return pd.read_sql_query(query, conn, params=params if params else ())
 
@@ -227,33 +237,22 @@ def query_db(db_name, query, params=None):
 def get_master_company_data():
     if not os.path.exists(MASTER_DB_NAME):
         return pd.DataFrame()
-    with sqlite3.connect(MASTER_DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='master_companies';")
-        if cursor.fetchone() is None:
-            return pd.DataFrame()
-    return query_db(MASTER_DB_NAME, "SELECT * FROM master_companies")
+    # Note: Using query_local_db to read from the SQLite file in the repo
+    return query_local_db(MASTER_DB_NAME, "SELECT * FROM master_companies")
 
 @st.cache_data(ttl=3600)
 def get_master_broker_names():
     if not os.path.exists(MASTER_DB_NAME): 
         return []
-    with sqlite3.connect(MASTER_DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='master_brokers';")
-        if cursor.fetchone() is None:
-            return [] 
-            
-    df = query_db(MASTER_DB_NAME, "SELECT Name FROM master_brokers")
+    # Note: Using query_local_db to read from the SQLite file in the repo
+    df = query_local_db(MASTER_DB_NAME, "SELECT Name FROM master_brokers")
     return df['Name'].tolist() if not df.empty else []
 
 def insert_into_db(data):
-    with sqlite3.connect(OUTPUT_DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        INSERT INTO email_data (Country, Sector, Company, Ticker, Category, ContentType, BrokerName, EmailSubject, EmailContent, MatchStatus)
-        VALUES (:Country, :Sector, :Company, :Ticker, :Category, :ContentType, :BrokerName, :EmailSubject, :EmailContent, :MatchStatus)
-        """, data)
+    # This function now inserts data into the permanent cloud database
+    df = pd.DataFrame([data])
+    with engine.connect() as conn:
+        df.to_sql('email_data', con=conn, if_exists='append', index=False)
         conn.commit()
 
 # --- MATCHING LOGIC ---
@@ -442,27 +441,11 @@ def process_emails(email_source, source_type):
             insert_into_db(report)
 
     progress_bar.progress(1.0, text="Processing complete!")
-    
-    # --- NEW CODE START ---
-    # Display a success message and the download button after processing
     st.success("✅ Processing complete! The database has been updated.")
-    
-    # Check if the output database file exists before offering it for download
-    if os.path.exists(OUTPUT_DB_NAME):
-        with open(OUTPUT_DB_NAME, "rb") as fp:
-            st.download_button(
-                label="Download Extracted Data (SQLite DB)",
-                data=fp,
-                file_name=OUTPUT_DB_NAME,
-                mime="application/octet-stream"
-            )
-    # --- NEW CODE END ---
 
 
 # --- MAIN UI ---
 def main():
-    setup_output_database()
-    
     st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
     
     nav_tab1, nav_tab2, nav_tab3 = st.tabs([
@@ -496,91 +479,45 @@ def main():
                     if uploaded_files: process_emails(uploaded_files, 'upload')
                     else: st.warning("Please upload at least one .msg file.")
 
-    # --- START: MODIFIED QUERY DATABASE TAB WITH DYNAMIC FILTERS ---
     with nav_tab2:
         st.header("Query Extracted Data")
 
         try:
-            # Load all data to populate filter options
-            all_data_df = query_db(OUTPUT_DB_NAME, "SELECT * FROM email_data")
-        except Exception:
-            # If the table doesn't exist yet, create an empty DataFrame to avoid errors
-            all_data_df = pd.DataFrame()
+            # Query ALL data from your permanent cloud database
+            all_data_df = query_db("SELECT * FROM email_data ORDER BY ProcessedAt DESC")
+        except Exception as e:
+            st.error(f"Could not connect to the database: {e}")
+            all_data_df = pd.DataFrame() # Create an empty df on error
 
         if all_data_df.empty:
             st.warning("The extracted data table is empty. Please process some emails first.")
         else:
-            # --- NEW CODE START ---
-            # Add a download button at the top of the query tab
-            if os.path.exists(OUTPUT_DB_NAME):
-                with open(OUTPUT_DB_NAME, "rb") as fp:
-                    st.download_button(
-                        label="Download Full Database (SQLite DB)",
-                        data=fp,
-                        file_name=OUTPUT_DB_NAME,
-                        mime="application/octet-stream",
-                        key="download_db_query_tab" # Use a unique key
-                    )
-            # --- NEW CODE END ---
+            # --- START: PREPARE AND SHOW DOWNLOAD BUTTON ---
+            # 1. Create a temporary SQLite file on the server to hold the data
+            temp_db_name = "financial_emails_export.db"
+            conn = sqlite3.connect(temp_db_name)
+            # 2. Write the DataFrame from the cloud into this temporary file
+            all_data_df.to_sql('email_data', conn, if_exists='replace', index=False)
+            conn.close()
 
-            # Display filter widgets
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    # Create multiselect widgets from unique values in the DataFrame
-                    companies = sorted(all_data_df['Company'].dropna().unique())
-                    brokers = sorted(all_data_df['BrokerName'].dropna().unique())
-                    
-                    selected_companies = st.multiselect("Filter by Company:", options=companies)
-                    selected_brokers = st.multiselect("Filter by Broker:", options=brokers)
-
-                with col2:
-                    # Create text and date input widgets
-                    search_term = st.text_input("Search in Subject or Content:", placeholder="e.g., earnings, downgrade")
-                    
-                    # Convert 'ProcessedAt' to date objects for the date picker
-                    all_data_df['ProcessedAtDate'] = pd.to_datetime(all_data_df['ProcessedAt']).dt.date
-                    min_date = all_data_df['ProcessedAtDate'].min()
-                    max_date = all_data_df['ProcessedAtDate'].max()
-                    
-                    selected_date_range = st.date_input(
-                        "Filter by Processed Date:",
-                        value=(min_date, max_date),
-                        min_value=min_date,
-                        max_value=max_date,
-                        format="YYYY-MM-DD"
-                    )
-
-            # Dynamically build the SQL query based on user selections
-            query = "SELECT * FROM email_data WHERE 1=1"
-            params = []
-
-            if selected_companies:
-                placeholders = ', '.join(['?'] * len(selected_companies))
-                query += f" AND Company IN ({placeholders})"
-                params.extend(selected_companies)
-
-            if selected_brokers:
-                placeholders = ', '.join(['?'] * len(selected_brokers))
-                query += f" AND BrokerName IN ({placeholders})"
-                params.extend(selected_brokers)
-
-            if search_term:
-                query += " AND (EmailSubject LIKE ? OR EmailContent LIKE ?)"
-                params.extend([f"%{search_term}%", f"%{search_term}%"])
+            # 3. Read the bytes from the newly created file
+            with open(temp_db_name, "rb") as fp:
+                db_bytes = fp.read()
             
-            if len(selected_date_range) == 2:
-                start_date, end_date = selected_date_range
-                # Use the date() function in SQL to compare just the date part
-                query += " AND date(ProcessedAt) BETWEEN ? AND ?"
-                params.extend([start_date, end_date])
+            # 4. Clean up by deleting the temporary file from the server
+            os.remove(temp_db_name)
 
-            query += " ORDER BY ProcessedAt DESC"
+            # 5. Display the download button with the prepared data
+            st.download_button(
+                label="Download Full Database (SQLite DB)",
+                data=db_bytes,
+                file_name="financial_emails.db", # The name the user will see
+                mime="application/octet-stream"
+            )
+            # --- END: DOWNLOAD BUTTON LOGIC ---
 
-            # Execute the final query and display the filtered results
-            filtered_df = query_db(OUTPUT_DB_NAME, query, params=params)
-            st.dataframe(filtered_df, use_container_width=True)
-    # --- END: MODIFIED QUERY DATABASE TAB ---
+            # Display the full dataframe from the cloud database
+            st.dataframe(all_data_df, use_container_width=True)
 
     with nav_tab3:
         st.header("Manage Master Lists")
