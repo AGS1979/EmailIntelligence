@@ -283,11 +283,18 @@ def find_company_in_master(extracted_report, master_df):
     if 'normalized_name' not in master_df.columns:
         master_df['normalized_name'] = master_df['short_name'].apply(normalize_company_name)
 
-    if ticker:
-        match = master_df[master_df['ticker'].str.lower() == ticker.lower()]
+    # --- MODIFIED SECTION START ---
+    # First, try to match by ticker only if a ticker exists and is a string.
+    if ticker and isinstance(ticker, str):
+        # Create a boolean mask that handles potential None/NaN values in the master list's ticker column
+        mask = master_df['ticker'].str.lower() == ticker.lower()
+        # Fill NaN values that result from non-string entries in the 'ticker' column with False
+        match = master_df[mask.fillna(False)]
         if not match.empty:
             return match.iloc[0], "Ticker Match"
+    # --- MODIFIED SECTION END ---
 
+    # If no ticker match, continue to match by company name
     if company_name:
         match = master_df[master_df['short_name'].str.lower() == company_name.lower()]
         if not match.empty:
