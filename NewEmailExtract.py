@@ -249,8 +249,12 @@ def get_master_broker_names():
     return df['Name'].tolist() if not df.empty else []
 
 def insert_into_db(data):
-    # This function now inserts data into the permanent cloud database
-    df = pd.DataFrame([data])
+    # Convert all dictionary keys to lowercase to match the database table
+    data_lowercase_keys = {key.lower(): value for key, value in data.items()}
+    
+    # Now create the DataFrame with the corrected lowercase keys
+    df = pd.DataFrame([data_lowercase_keys])
+    
     with engine.connect() as conn:
         df.to_sql('email_data', con=conn, if_exists='append', index=False)
         conn.commit()
