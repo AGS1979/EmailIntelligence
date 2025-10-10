@@ -504,12 +504,19 @@ def main():
             st.warning("The extracted data table is empty. Please process some emails first.")
         else:
             # --- START: PREPARE AND SHOW DOWNLOAD BUTTON ---
-            # 1. Create a temporary SQLite file on the server to hold the data
+            # 1. Define the temporary database name
             temp_db_name = "financial_emails_export.db"
+
+            # 2. Manually delete the file if it already exists to ensure a fresh start
+            if os.path.exists(temp_db_name):
+                os.remove(temp_db_name)
+
+            # 3. Create a new, empty SQLite file connection
             conn = sqlite3.connect(temp_db_name)
-            # 2. Write the DataFrame from the cloud into this temporary file
-            all_data_df.to_sql('email_data', conn, if_exists='replace', index=False)
+            # 4. Write the DataFrame to the new file. We can use 'fail' (the default) because we know the table doesn't exist.
+            all_data_df.to_sql('email_data', conn, if_exists='fail', index=False)
             conn.close()
+            # ... rest of the download logic ...
 
             # 3. Read the bytes from the newly created file
             with open(temp_db_name, "rb") as fp:
