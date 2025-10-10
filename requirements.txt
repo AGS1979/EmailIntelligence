@@ -7,3 +7,5 @@ requests
 msal
 thefuzz
 python-levenshtein
+sqlalchemy
+psycopg2-binary
