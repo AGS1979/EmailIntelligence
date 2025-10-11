@@ -279,12 +279,16 @@ def normalize_company_name(name):
 def find_company_in_master(extracted_report, master_df):
     company_name = extracted_report.get("Company")
     ticker = extracted_report.get("Ticker")
-    
-    if 'normalized_name' not in master_df.columns:
-        master_df['normalized_name'] = master_df['short_name'].apply(normalize_company_name)
 
-    # --- MODIFIED SECTION START ---
-    # First, try to match by ticker only if a ticker exists and is a string.
+    # Define the columns to search for company names
+    name_columns = ['short_name', 'company_short_name', 'full_company_name', 'acronym']
+    
+    # Ensure all name columns exist in the DataFrame, adding them if they don't to prevent errors
+    for col in name_columns:
+        if col not in master_df.columns:
+            master_df[col] = None
+
+    # --- 1. Ticker Match (Highest Priority) ---
     if ticker and isinstance(ticker, str):
         # Create a boolean mask that handles potential None/NaN values in the master list's ticker column
         mask = master_df['ticker'].str.lower() == ticker.lower()
@@ -292,29 +296,63 @@ def find_company_in_master(extracted_report, master_df):
         match = master_df[mask.fillna(False)]
         if not match.empty:
             return match.iloc[0], "Ticker Match"
-    # --- MODIFIED SECTION END ---
 
-    # If no ticker match, continue to match by company name
-    if company_name:
-        match = master_df[master_df['short_name'].str.lower() == company_name.lower()]
+    if not company_name or not isinstance(company_name, str):
+        return None, "No Match (Invalid/Missing Company Name)"
+
+    # --- 2. Exact Name Match ---
+    # Loop through each name column and check for a direct case-insensitive match
+    for col in name_columns:
+        # Ensure the column contains string data before using .str accessor and handle None values
+        if pd.api.types.is_string_dtype(master_df[col]):
+            match = master_df[master_df[col].str.lower() == company_name.lower()]
+            if not match.empty:
+                return match.iloc[0], f"Exact Match ({col})"
+
+    # --- 3. Normalized Match ---
+    normalized_input = normalize_company_name(company_name)
+    if not normalized_input:
+        return None, "No Match (Empty Normalized Name)"
+
+    # Normalize all name columns for broader matching
+    normalized_cols = []
+    for col in name_columns:
+        normalized_col_name = f'normalized_{col}'
+        if normalized_col_name not in master_df.columns:
+            # fillna('') to handle potential NaN/None values before applying normalize function
+            master_df[normalized_col_name] = master_df[col].fillna('').apply(normalize_company_name)
+        normalized_cols.append(normalized_col_name)
+
+    # Check for an exact match on any of the normalized columns
+    for norm_col in normalized_cols:
+        match = master_df[master_df[norm_col] == normalized_input]
         if not match.empty:
-            return match.iloc[0], "Exact Name Match"
+            original_col = norm_col.replace('normalized_', '')
+            return match.iloc[0], f"Normalized Match ({original_col})"
 
-        normalized_input = normalize_company_name(company_name)
-        if normalized_input:
-            exact_normalized_match = master_df[master_df['normalized_name'] == normalized_input]
-            if not exact_normalized_match.empty:
-                return exact_normalized_match.iloc[0], "Normalized Match"
-            
-            substring_matches = master_df[master_df['normalized_name'].str.contains(normalized_input, na=False)]
-            if len(substring_matches) == 1:
-                return substring_matches.iloc[0], "Substring Match"
+    # --- 4. Substring Match ---
+    all_substring_matches = pd.DataFrame()
+    for norm_col in normalized_cols:
+        # Filter out empty strings from the search
+        valid_rows = master_df[master_df[norm_col] != '']
+        substring_matches = valid_rows[valid_rows[norm_col].str.contains(normalized_input, na=False)]
+        if not substring_matches.empty:
+            all_substring_matches = pd.concat([all_substring_matches, substring_matches])
+    
+    # Remove duplicates if a company matched in multiple columns
+    all_substring_matches = all_substring_matches.drop_duplicates()
+    if len(all_substring_matches) == 1:
+        return all_substring_matches.iloc[0], "Substring Match"
 
-        master_df['fuzzy_score'] = master_df['short_name'].apply(
-            lambda x: fuzz.token_set_ratio(company_name, x)
-        )
+    # --- 5. Fuzzy Match (Last Resort) ---
+    def get_max_fuzzy_score(row):
+        scores = [fuzz.token_set_ratio(company_name, str(row[col])) for col in name_columns if pd.notna(row[col])]
+        return max(scores) if scores else 0
+
+    master_df['fuzzy_score'] = master_df.apply(get_max_fuzzy_score, axis=1)
+    
+    if not master_df.empty:
         best_match = master_df.loc[master_df['fuzzy_score'].idxmax()]
-        
         if best_match['fuzzy_score'] >= 95:
             return best_match, f"Fuzzy Match ({best_match['fuzzy_score']}%)"
 
@@ -430,7 +468,7 @@ def process_emails(email_source, source_type):
             report['EmailContent'] = body
 
             company_to_find = report.get("Company", "N/A")
-            matched_row, match_status = find_company_in_master(report, master_companies_df)
+            matched_row, match_status = find_company_in_master(report, master_companies_df.copy()) # Use a copy to avoid side effects
 
             if matched_row is not None:
                 report["Company"] = matched_row['short_name']
