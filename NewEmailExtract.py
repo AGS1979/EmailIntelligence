@@ -495,100 +495,140 @@ def process_emails(email_source, source_type):
 
 # --- MAIN UI ---
 def main():
-    st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
-    
-    nav_tab1, nav_tab2, nav_tab3 = st.tabs([
-        "📥 Scan & Process Emails", 
-        "🔍 Query Database", 
-        "📚 Manage Master Lists"
-    ])
+  st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
+  
+  nav_tab1, nav_tab2, nav_tab3 = st.tabs([
+    "📥 Scan & Process Emails", 
+    "🔍 Query Database", 
+    "📚 Manage Master Lists"
+  ])
 
-    with nav_tab1:
-        st.header("Scan & Process Emails")
-        scan_tab1, scan_tab2 = st.tabs(["Scan Outlook Inbox", "Upload .msg Files"])
-        with scan_tab1:
-            with st.container(border=True):
-                st.subheader("Outlook Email Scan")
-                target_email = st.text_input("Enter Mailbox Email Address:", placeholder="e.g., finance.reports@yourcompany.com", key="outlook_email_input")
-                target_domain = st.text_input("Filter by Sender Domain (optional):", placeholder="e.g., jpmorgan.com", key="outlook_domain_input")
-                if st.button("Scan for New Emails", type="primary", use_container_width=True, key="scan_outlook_button"):
-                    if not target_email: st.warning("Please enter a mailbox email address.")
-                    else:
-                        with st.spinner("Authenticating and fetching emails..."):
-                            token = get_graph_api_token()
-                            if token:
-                                emails = scan_outlook_emails(target_email, token, target_domain)
-                                if emails: process_emails(emails, 'outlook')
-                                elif emails is not None: st.success("✅ No new unread emails found.")
-        with scan_tab2:
-            with st.container(border=True):
-                st.subheader("Upload .msg Files")
-                uploaded_files = st.file_uploader("Select .msg files to process", type=["msg"], accept_multiple_files=True, key="msg_uploader")
-                if st.button("Process Uploaded Emails", type="primary", use_container_width=True, key="process_upload_button"):
-                    if uploaded_files: process_emails(uploaded_files, 'upload')
-                    else: st.warning("Please upload at least one .msg file.")
+  with nav_tab1:
+    st.header("Scan & Process Emails")
+    scan_tab1, scan_tab2 = st.tabs(["Scan Outlook Inbox", "Upload .msg Files"])
+    with scan_tab1:
+      with st.container(border=True):
+        st.subheader("Outlook Email Scan")
+        target_email = st.text_input("Enter Mailbox Email Address:", placeholder="e.g., finance.reports@yourcompany.com", key="outlook_email_input")
+        target_domain = st.text_input("Filter by Sender Domain (optional):", placeholder="e.g., jpmorgan.com", key="outlook_domain_input")
+        if st.button("Scan for New Emails", type="primary", use_container_width=True, key="scan_outlook_button"):
+          if not target_email: st.warning("Please enter a mailbox email address.")
+          else:
+            with st.spinner("Authenticating and fetching emails..."):
+              token = get_graph_api_token()
+              if token:
+                emails = scan_outlook_emails(target_email, token, target_domain)
+                if emails: process_emails(emails, 'outlook')
+                elif emails is not None: st.success("✅ No new unread emails found.")
+    with scan_tab2:
+      with st.container(border=True):
+        st.subheader("Upload .msg Files")
+        uploaded_files = st.file_uploader("Select .msg files to process", type=["msg"], accept_multiple_files=True, key="msg_uploader")
+        if st.button("Process Uploaded Emails", type="primary", use_container_width=True, key="process_upload_button"):
+          if uploaded_files: process_emails(uploaded_files, 'upload')
+          else: st.warning("Please upload at least one .msg file.")
 
-    with nav_tab2:
-        st.header("Query Extracted Data")
+  # #############################################################################
+  # ######## 🚀 START OF THE AWESOME NEW FILTERING SECTION! 🚀 ########
+  # #############################################################################
+  with nav_tab2:
+    st.header("Query Extracted Data")
 
-        try:
-            # Query ALL data from your permanent cloud database
-            all_data_df = query_db("SELECT * FROM email_data ORDER BY ProcessedAt DESC")
-        except Exception as e:
-            st.error(f"Could not connect to the database: {e}")
-            all_data_df = pd.DataFrame() # Create an empty df on error
+    try:
+      all_data_df = query_db("SELECT * FROM email_data ORDER BY \"processedat\" DESC")
+      # Ensure column names are lowercase for consistency
+      all_data_df.columns = [x.lower() for x in all_data_df.columns]
+    except Exception as e:
+      st.error(f"Could not connect to the database: {e}")
+      all_data_df = pd.DataFrame()
 
-        if all_data_df.empty:
-            st.warning("The extracted data table is empty. Please process some emails first.")
-        else:
-            # --- START: PREPARE AND SHOW DOWNLOAD BUTTON ---
-            # 1. Define the temporary database name
-            temp_db_name = "financial_emails_export.db"
+    if all_data_df.empty:
+      st.warning("The extracted data table is empty. Please process some emails first.")
+    else:
+      filtered_df = all_data_df.copy()
 
-            # 2. Manually delete the file if it already exists to ensure a fresh start
-            if os.path.exists(temp_db_name):
-                os.remove(temp_db_name)
+      # --- FILTER UI ---
+      with st.container(border=True):
+        st.subheader("📊 Filter Your Data")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+          # Helper function to get sorted, unique, non-null values
+          def get_options(column_name):
+            return sorted([x for x in filtered_df[column_name].unique() if pd.notna(x)])
 
-            # 3. Create a new, empty SQLite file connection
-            conn = sqlite3.connect(temp_db_name)
-            # 4. Write the DataFrame to the new file. We can use 'fail' (the default) because we know the table doesn't exist.
-            all_data_df.to_sql('email_data', conn, if_exists='fail', index=False)
-            conn.close()
-            # ... rest of the download logic ...
+          selected_countries = st.multiselect("Country:", get_options('country'))
+          selected_brokers = st.multiselect("Broker Name:", get_options('brokername'))
+          selected_sectors = st.multiselect("Sector:", get_options('sector'))
+        
+        with col2:
+          selected_companies = st.multiselect("Company Name:", get_options('company'))
+          selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
 
-            # 3. Read the bytes from the newly created file
-            with open(temp_db_name, "rb") as fp:
-                db_bytes = fp.read()
-            
-            # 4. Clean up by deleting the temporary file from the server
-            os.remove(temp_db_name)
+        search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
 
-            # 5. Display the download button with the prepared data
-            st.download_button(
-                label="Download Full Database (SQLite DB)",
-                data=db_bytes,
-                file_name="financial_emails.db", # The name the user will see
-                mime="application/octet-stream"
-            )
-            # --- END: DOWNLOAD BUTTON LOGIC ---
+      # --- APPLY FILTERS ---
+      if selected_countries:
+        filtered_df = filtered_df[filtered_df['country'].isin(selected_countries)]
+      if selected_brokers:
+        filtered_df = filtered_df[filtered_df['brokername'].isin(selected_brokers)]
+      if selected_sectors:
+        filtered_df = filtered_df[filtered_df['sector'].isin(selected_sectors)]
+      if selected_companies:
+        filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
+      if selected_content_types:
+        filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
+      if search_query:
+        filtered_df = filtered_df[
+          filtered_df['emailsubject'].str.contains(search_query, case=False, na=False) |
+          filtered_df['emailcontent'].str.contains(search_query, case=False, na=False)
+        ]
+      
+      # --- DISPLAY RESULTS & DOWNLOAD ---
+      st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
-            # Display the full dataframe from the cloud database
-            st.dataframe(all_data_df, use_container_width=True)
+      # --- SMART DOWNLOAD BUTTON (exports filtered data) ---
+      if not filtered_df.empty:
+        temp_db_name = "financial_emails_export_filtered.db"
+        if os.path.exists(temp_db_name):
+          os.remove(temp_db_name)
+        conn = sqlite3.connect(temp_db_name)
+        # Use the filtered_df for the export!
+        filtered_df.to_sql('email_data', conn, if_exists='fail', index=False)
+        conn.close()
+        
+        with open(temp_db_name, "rb") as fp:
+          db_bytes = fp.read()
+        os.remove(temp_db_name)
 
-    with nav_tab3:
-        st.header("Manage Master Lists")
-        st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
-        master_tab1, master_tab2 = st.tabs(["Master Companies", "Master Brokers"])
-        with master_tab1:
-            st.subheader("Master Company List")
-            st.dataframe(get_master_company_data(), use_container_width=True)
-        with master_tab2:
-            st.subheader("Master Broker List")
-            broker_names = get_master_broker_names()
-            if broker_names:
-                st.dataframe(pd.DataFrame(broker_names, columns=["Broker Name"]), use_container_width=True)
-            else:
-                st.warning(f"The 'master_brokers' table was not found in '{MASTER_DB_NAME}'. Please ensure your import script has run correctly.")
+        st.download_button(
+          label="Download Filtered Results (SQLite DB)",
+          data=db_bytes,
+          file_name="financial_emails_filtered.db",
+          mime="application/octet-stream"
+        )
+
+      # --- DISPLAY DATAFRAME ---
+      st.dataframe(filtered_df, use_container_width=True)
+
+  # ###########################################################################
+  # ######## 👋 END OF THE AWESOME NEW FILTERING SECTION! 👋 ########
+  # ###########################################################################
+
+  with nav_tab3:
+    st.header("Manage Master Lists")
+    st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
+    master_tab1, master_tab2 = st.tabs(["Master Companies", "Master Brokers"])
+    with master_tab1:
+      st.subheader("Master Company List")
+      st.dataframe(get_master_company_data(), use_container_width=True)
+    with master_tab2:
+      st.subheader("Master Broker List")
+      broker_names = get_master_broker_names()
+      if broker_names:
+        st.dataframe(pd.DataFrame(broker_names, columns=["Broker Name"]), use_container_width=True)
+      else:
+        st.warning(f"The 'master_brokers' table was not found in '{MASTER_DB_NAME}'. Please ensure your import script has run correctly.")
 
 if __name__ == "__main__":
-    main()
+  main()
