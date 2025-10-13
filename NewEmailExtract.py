@@ -3,7 +3,8 @@ import sqlite3
 import json
 import tempfile
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
 
 import streamlit as st
 import pandas as pd
@@ -13,6 +14,7 @@ import requests
 import msal
 from thefuzz import fuzz, process
 from sqlalchemy import create_engine, text
+from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -198,6 +200,12 @@ try:
     AZURE_TENANT_ID = st.secrets["AZURE_TENANT_ID"]
     AZURE_CLIENT_SECRET = st.secrets["AZURE_CLIENT_SECRET"]
     DB_CONNECTION_STRING = st.secrets["DB_CONNECTION_STRING"]
+    
+    # --- AZURE BLOB STORAGE SETUP ---
+    connect_str = st.secrets["AZURE_STORAGE_CONNECTION_STRING"]
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    AZURE_CONTAINER_NAME = st.secrets["AZURE_CONTAINER_NAME"]
+
 except KeyError as e:
     st.error(f"Configuration key not found in Streamlit Secrets: {e}")
     st.stop()
@@ -207,28 +215,21 @@ MASTER_DB_NAME = "Master_Company_List.db"
 AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}"
 SCOPE = ["https://graph.microsoft.com/.default"]
 
-# --- NEW DATABASE SETUP ---
-# Create a reusable database engine from the connection string in Streamlit Secrets
+# --- DATABASE SETUP ---
 engine = create_engine(DB_CONNECTION_STRING)
 
 # --- DATABASE FUNCTIONS ---
 def setup_output_database():
     # This function is no longer needed.
-    # The table should be created one time in the Supabase SQL Editor using the following command:
-    # CREATE TABLE IF NOT EXISTS email_data (
-    #     id SERIAL PRIMARY KEY, Country TEXT, Sector TEXT,
-    #     Company TEXT, Ticker TEXT, Category TEXT, ContentType TEXT, BrokerName TEXT,
-    #     EmailSubject TEXT, EmailContent TEXT, MatchStatus TEXT,
-    #     ProcessedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    # );
+    # The table should be created one time in the Supabase SQL Editor.
+    # Make sure you've added the new 'blob_name' column:
+    # ALTER TABLE email_data ADD COLUMN blob_name TEXT;
     pass
 
 def query_db(query, params=None):
-    # This function now queries the permanent cloud database
     with engine.connect() as conn:
         return pd.read_sql_query(sql=text(query), con=conn, params=params)
 
-# This function reads the local master DB file from the repository
 def query_local_db(db_name, query, params=None):
     with sqlite3.connect(db_name) as conn:
         return pd.read_sql_query(query, conn, params=params if params else ())
@@ -237,24 +238,18 @@ def query_local_db(db_name, query, params=None):
 def get_master_company_data():
     if not os.path.exists(MASTER_DB_NAME):
         return pd.DataFrame()
-    # Note: Using query_local_db to read from the SQLite file in the repo
     return query_local_db(MASTER_DB_NAME, "SELECT * FROM master_companies")
 
 @st.cache_data(ttl=3600)
 def get_master_broker_names():
     if not os.path.exists(MASTER_DB_NAME): 
         return []
-    # Note: Using query_local_db to read from the SQLite file in the repo
     df = query_local_db(MASTER_DB_NAME, "SELECT Name FROM master_brokers")
     return df['Name'].tolist() if not df.empty else []
 
 def insert_into_db(data):
-    # Convert all dictionary keys to lowercase to match the database table
     data_lowercase_keys = {key.lower(): value for key, value in data.items()}
-    
-    # Now create the DataFrame with the corrected lowercase keys
     df = pd.DataFrame([data_lowercase_keys])
-    
     with engine.connect() as conn:
         df.to_sql('email_data', con=conn, if_exists='append', index=False)
         conn.commit()
@@ -263,7 +258,6 @@ def insert_into_db(data):
 def normalize_company_name(name):
     if not isinstance(name, str):
         return ""
-    
     name = name.lower()
     suffixes = [
         r'\bholding\b', r'\bholdings\b', r'\bhold\b', r'\bltd\b', r'\binc\b',
@@ -271,7 +265,6 @@ def normalize_company_name(name):
     ]
     for suffix in suffixes:
         name = re.sub(suffix, '', name, flags=re.IGNORECASE)
-    
     name = re.sub(r'[^\w\s]', '', name)
     name = re.sub(r'\s+', ' ', name).strip()
     return name
@@ -279,20 +272,14 @@ def normalize_company_name(name):
 def find_company_in_master(extracted_report, master_df):
     company_name = extracted_report.get("Company")
     ticker = extracted_report.get("Ticker")
-
-    # Define the columns to search for company names
     name_columns = ['short_name', 'company_short_name', 'full_company_name', 'acronym']
     
-    # Ensure all name columns exist in the DataFrame, adding them if they don't to prevent errors
     for col in name_columns:
         if col not in master_df.columns:
             master_df[col] = None
 
-    # --- 1. Ticker Match (Highest Priority) ---
     if ticker and isinstance(ticker, str):
-        # Create a boolean mask that handles potential None/NaN values in the master list's ticker column
         mask = master_df['ticker'].str.lower() == ticker.lower()
-        # Fill NaN values that result from non-string entries in the 'ticker' column with False
         match = master_df[mask.fillna(False)]
         if not match.empty:
             return match.iloc[0], "Ticker Match"
@@ -300,51 +287,40 @@ def find_company_in_master(extracted_report, master_df):
     if not company_name or not isinstance(company_name, str):
         return None, "No Match (Invalid/Missing Company Name)"
 
-    # --- 2. Exact Name Match ---
-    # Loop through each name column and check for a direct case-insensitive match
     for col in name_columns:
-        # Ensure the column contains string data before using .str accessor and handle None values
         if pd.api.types.is_string_dtype(master_df[col]):
             match = master_df[master_df[col].str.lower() == company_name.lower()]
             if not match.empty:
                 return match.iloc[0], f"Exact Match ({col})"
 
-    # --- 3. Normalized Match ---
     normalized_input = normalize_company_name(company_name)
     if not normalized_input:
         return None, "No Match (Empty Normalized Name)"
 
-    # Normalize all name columns for broader matching
     normalized_cols = []
     for col in name_columns:
         normalized_col_name = f'normalized_{col}'
         if normalized_col_name not in master_df.columns:
-            # fillna('') to handle potential NaN/None values before applying normalize function
             master_df[normalized_col_name] = master_df[col].fillna('').apply(normalize_company_name)
         normalized_cols.append(normalized_col_name)
 
-    # Check for an exact match on any of the normalized columns
     for norm_col in normalized_cols:
         match = master_df[master_df[norm_col] == normalized_input]
         if not match.empty:
             original_col = norm_col.replace('normalized_', '')
             return match.iloc[0], f"Normalized Match ({original_col})"
 
-    # --- 4. Substring Match ---
     all_substring_matches = pd.DataFrame()
     for norm_col in normalized_cols:
-        # Filter out empty strings from the search
         valid_rows = master_df[master_df[norm_col] != '']
         substring_matches = valid_rows[valid_rows[norm_col].str.contains(normalized_input, na=False)]
         if not substring_matches.empty:
             all_substring_matches = pd.concat([all_substring_matches, substring_matches])
     
-    # Remove duplicates if a company matched in multiple columns
     all_substring_matches = all_substring_matches.drop_duplicates()
     if len(all_substring_matches) == 1:
         return all_substring_matches.iloc[0], "Substring Match"
 
-    # --- 5. Fuzzy Match (Last Resort) ---
     def get_max_fuzzy_score(row):
         scores = [fuzz.token_set_ratio(company_name, str(row[col])) for col in name_columns if pd.notna(row[col])]
         return max(scores) if scores else 0
@@ -362,10 +338,7 @@ def find_broker_in_master(extracted_broker_name, master_broker_list):
     if not extracted_broker_name or not master_broker_list:
         return "Unknown", 0
     best_match, score = process.extractOne(extracted_broker_name, master_broker_list)
-    if score >= 85:
-        return best_match, score
-    else:
-        return extracted_broker_name, score
+    return (best_match, score) if score >= 85 else (extracted_broker_name, score)
 
 # --- OUTLOOK & PARSING LOGIC ---
 @st.cache_resource(ttl=3500)
@@ -429,14 +402,11 @@ def process_emails(email_source, source_type):
     master_brokers = get_master_broker_names()
 
     if master_companies_df.empty:
-        if not os.path.exists(MASTER_DB_NAME):
-            st.error(f"Database file '{MASTER_DB_NAME}' not found. Please ensure it's in the correct directory.")
-        else:
-            st.error(f"Database '{MASTER_DB_NAME}' found, but the 'master_companies' table is empty or missing. Please run the import script.")
+        st.error(f"Master company database '{MASTER_DB_NAME}' is empty or not found.")
         return
 
     if not master_brokers:
-        st.warning(f"Warning: The 'master_brokers' table in '{MASTER_DB_NAME}' is empty. Broker name extraction may be less accurate.")
+        st.warning(f"Warning: The 'master_brokers' table in '{MASTER_DB_NAME}' is empty.")
 
     status_container = st.container() 
     progress_bar = st.progress(0, text="Initializing...")
@@ -444,12 +414,30 @@ def process_emails(email_source, source_type):
     
     for i, item in enumerate(email_source):
         subject, body = (None, None)
-        if source_type == 'outlook':
-            subject, body = item.get('subject', 'No Subject'), item.get('body', {}).get('content', '')
-        elif source_type == 'upload':
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".msg") as tmp: tmp.write(item.getvalue())
-            subject, body = parse_email(tmp.name); os.unlink(tmp.name)
-        
+        blob_name = None
+
+        try:
+            if source_type == 'upload':
+                file_bytes = item.getvalue()
+                blob_name = f"emails/{uuid.uuid4()}.msg"
+                blob_client = blob_service_client.get_blob_client(container=AZURE_CONTAINER_NAME, blob=blob_name)
+                blob_client.upload_blob(file_bytes)
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".msg") as tmp:
+                    tmp.write(file_bytes)
+                subject, body = parse_email(tmp.name)
+                os.unlink(tmp.name)
+            
+            elif source_type == 'outlook':
+                subject, body = item.get('subject', 'No Subject'), item.get('body', {}).get('content', '')
+
+            if blob_name:
+                status_container.info(f"📤 Saved original email to Azure with name: {blob_name}")
+
+        except Exception as e:
+            st.error(f"Failed to save email to Azure Blob Storage: {e}")
+            continue
+
         progress_bar.progress((i + 1) / total_emails, text=f"Processing: {subject}")
         if not (subject and body): continue
         
@@ -466,9 +454,10 @@ def process_emails(email_source, source_type):
             report.setdefault('BrokerName', 'Unknown')
             report['EmailSubject'] = subject
             report['EmailContent'] = body
+            report['blob_name'] = blob_name
 
             company_to_find = report.get("Company", "N/A")
-            matched_row, match_status = find_company_in_master(report, master_companies_df.copy()) # Use a copy to avoid side effects
+            matched_row, match_status = find_company_in_master(report, master_companies_df.copy())
 
             if matched_row is not None:
                 report["Company"] = matched_row['short_name']
@@ -485,150 +474,176 @@ def process_emails(email_source, source_type):
             if master_brokers:
                 matched_broker, score = find_broker_in_master(extracted_broker, master_brokers)
                 report["BrokerName"] = matched_broker
-                status_container.info(f" broker '{extracted_broker}' -> Matched to '{matched_broker}' (Score: {score}%)")
+                status_container.info(f"Broker '{extracted_broker}' -> Matched to '{matched_broker}' (Score: {score}%)")
 
             insert_into_db(report)
 
     progress_bar.progress(1.0, text="Processing complete!")
     st.success("✅ Processing complete! The database has been updated.")
 
+# --- AZURE SAS URL HELPER ---
+def generate_sas_url(container_name, blob_name):
+    if not blob_name or pd.isna(blob_name):
+        return None
+    try:
+        account_name = blob_service_client.account_name
+        account_key = blob_service_client.credential.account_key
+        sas_token = generate_blob_sas(
+            account_name=account_name,
+            container_name=container_name,
+            blob_name=blob_name,
+            account_key=account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.utcnow() + timedelta(hours=1)
+        )
+        return f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+    except Exception:
+        return None
 
 # --- MAIN UI ---
 def main():
-  st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
-  
-  nav_tab1, nav_tab2, nav_tab3 = st.tabs([
-    "📥 Scan & Process Emails", 
-    "🔍 Query Database", 
-    "📚 Manage Master Lists"
-  ])
+    st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
+    
+    nav_tab1, nav_tab2, nav_tab3 = st.tabs([
+        "📥 Scan & Process Emails", 
+        "🔍 Query Database", 
+        "📚 Manage Master Lists"
+    ])
 
-  with nav_tab1:
-    st.header("Scan & Process Emails")
-    scan_tab1, scan_tab2 = st.tabs(["Scan Outlook Inbox", "Upload .msg Files"])
-    with scan_tab1:
-      with st.container(border=True):
-        st.subheader("Outlook Email Scan")
-        target_email = st.text_input("Enter Mailbox Email Address:", placeholder="e.g., finance.reports@yourcompany.com", key="outlook_email_input")
-        target_domain = st.text_input("Filter by Sender Domain (optional):", placeholder="e.g., jpmorgan.com", key="outlook_domain_input")
-        if st.button("Scan for New Emails", type="primary", use_container_width=True, key="scan_outlook_button"):
-          if not target_email: st.warning("Please enter a mailbox email address.")
-          else:
-            with st.spinner("Authenticating and fetching emails..."):
-              token = get_graph_api_token()
-              if token:
-                emails = scan_outlook_emails(target_email, token, target_domain)
-                if emails: process_emails(emails, 'outlook')
-                elif emails is not None: st.success("✅ No new unread emails found.")
-    with scan_tab2:
-      with st.container(border=True):
-        st.subheader("Upload .msg Files")
-        uploaded_files = st.file_uploader("Select .msg files to process", type=["msg"], accept_multiple_files=True, key="msg_uploader")
-        if st.button("Process Uploaded Emails", type="primary", use_container_width=True, key="process_upload_button"):
-          if uploaded_files: process_emails(uploaded_files, 'upload')
-          else: st.warning("Please upload at least one .msg file.")
+    with nav_tab1:
+        st.header("Scan & Process Emails")
+        scan_tab1, scan_tab2 = st.tabs(["Scan Outlook Inbox", "Upload .msg Files"])
+        with scan_tab1:
+            with st.container(border=True):
+                st.subheader("Outlook Email Scan")
+                target_email = st.text_input("Enter Mailbox Email Address:", placeholder="e.g., finance.reports@yourcompany.com", key="outlook_email_input")
+                target_domain = st.text_input("Filter by Sender Domain (optional):", placeholder="e.g., jpmorgan.com", key="outlook_domain_input")
+                if st.button("Scan for New Emails", type="primary", use_container_width=True, key="scan_outlook_button"):
+                    if not target_email: st.warning("Please enter a mailbox email address.")
+                    else:
+                        with st.spinner("Authenticating and fetching emails..."):
+                            token = get_graph_api_token()
+                            if token:
+                                emails = scan_outlook_emails(target_email, token, target_domain)
+                                if emails: process_emails(emails, 'outlook')
+                                elif emails is not None: st.success("✅ No new unread emails found.")
+        with scan_tab2:
+            with st.container(border=True):
+                st.subheader("Upload .msg Files")
+                uploaded_files = st.file_uploader("Select .msg files to process", type=["msg"], accept_multiple_files=True, key="msg_uploader")
+                if st.button("Process Uploaded Emails", type="primary", use_container_width=True, key="process_upload_button"):
+                    if uploaded_files: process_emails(uploaded_files, 'upload')
+                    else: st.warning("Please upload at least one .msg file.")
 
-  # #############################################################################
-  # ######## 🚀 START OF THE AWESOME NEW FILTERING SECTION! 🚀 ########
-  # #############################################################################
-  with nav_tab2:
-    st.header("Query Extracted Data")
+    with nav_tab2:
+        st.header("Query Extracted Data")
 
-    try:
-      all_data_df = query_db("SELECT * FROM email_data ORDER BY \"processedat\" DESC")
-      # Ensure column names are lowercase for consistency
-      all_data_df.columns = [x.lower() for x in all_data_df.columns]
-    except Exception as e:
-      st.error(f"Could not connect to the database: {e}")
-      all_data_df = pd.DataFrame()
+        try:
+            all_data_df = query_db("SELECT * FROM email_data ORDER BY \"processedat\" DESC")
+            all_data_df.columns = [x.lower() for x in all_data_df.columns]
+        except Exception as e:
+            st.error(f"Could not connect to the database: {e}")
+            all_data_df = pd.DataFrame()
 
-    if all_data_df.empty:
-      st.warning("The extracted data table is empty. Please process some emails first.")
-    else:
-      filtered_df = all_data_df.copy()
+        if all_data_df.empty:
+            st.warning("The extracted data table is empty. Please process some emails first.")
+        else:
+            filtered_df = all_data_df.copy()
 
-      # --- FILTER UI ---
-      with st.container(border=True):
-        st.subheader("📊 Filter Your Data")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-          # Helper function to get sorted, unique, non-null values
-          def get_options(column_name):
-            return sorted([x for x in filtered_df[column_name].unique() if pd.notna(x)])
+            # --- FILTER UI ---
+            with st.container(border=True):
+                st.subheader("📊 Filter Your Data")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    def get_options(column_name):
+                        if column_name in filtered_df.columns:
+                            return sorted([x for x in filtered_df[column_name].unique() if pd.notna(x)])
+                        return []
 
-          selected_countries = st.multiselect("Country:", get_options('country'))
-          selected_brokers = st.multiselect("Broker Name:", get_options('brokername'))
-          selected_sectors = st.multiselect("Sector:", get_options('sector'))
-        
-        with col2:
-          selected_companies = st.multiselect("Company Name:", get_options('company'))
-          selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
+                    selected_countries = st.multiselect("Country:", get_options('country'))
+                    selected_brokers = st.multiselect("Broker Name:", get_options('brokername'))
+                    selected_sectors = st.multiselect("Sector:", get_options('sector'))
+                
+                with col2:
+                    selected_companies = st.multiselect("Company Name:", get_options('company'))
+                    selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
 
-        search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
+                search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
 
-      # --- APPLY FILTERS ---
-      if selected_countries:
-        filtered_df = filtered_df[filtered_df['country'].isin(selected_countries)]
-      if selected_brokers:
-        filtered_df = filtered_df[filtered_df['brokername'].isin(selected_brokers)]
-      if selected_sectors:
-        filtered_df = filtered_df[filtered_df['sector'].isin(selected_sectors)]
-      if selected_companies:
-        filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
-      if selected_content_types:
-        filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
-      if search_query:
-        filtered_df = filtered_df[
-          filtered_df['emailsubject'].str.contains(search_query, case=False, na=False) |
-          filtered_df['emailcontent'].str.contains(search_query, case=False, na=False)
-        ]
-      
-      # --- DISPLAY RESULTS & DOWNLOAD ---
-      st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
+            # --- APPLY FILTERS ---
+            if selected_countries:
+                filtered_df = filtered_df[filtered_df['country'].isin(selected_countries)]
+            if selected_brokers:
+                filtered_df = filtered_df[filtered_df['brokername'].isin(selected_brokers)]
+            if selected_sectors:
+                filtered_df = filtered_df[filtered_df['sector'].isin(selected_sectors)]
+            if selected_companies:
+                filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
+            if selected_content_types:
+                filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
+            if search_query:
+                filtered_df = filtered_df[
+                    filtered_df['emailsubject'].str.contains(search_query, case=False, na=False) |
+                    filtered_df['emailcontent'].str.contains(search_query, case=False, na=False)
+                ]
+            
+            st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
-      # --- SMART DOWNLOAD BUTTON (exports filtered data) ---
-      if not filtered_df.empty:
-        temp_db_name = "financial_emails_export_filtered.db"
-        if os.path.exists(temp_db_name):
-          os.remove(temp_db_name)
-        conn = sqlite3.connect(temp_db_name)
-        # Use the filtered_df for the export!
-        filtered_df.to_sql('email_data', conn, if_exists='fail', index=False)
-        conn.close()
-        
-        with open(temp_db_name, "rb") as fp:
-          db_bytes = fp.read()
-        os.remove(temp_db_name)
+            # --- SMART DOWNLOAD BUTTON ---
+            if not filtered_df.empty:
+                temp_db_name = "financial_emails_export_filtered.db"
+                if os.path.exists(temp_db_name):
+                    os.remove(temp_db_name)
+                conn = sqlite3.connect(temp_db_name)
+                filtered_df.to_sql('email_data', conn, if_exists='fail', index=False)
+                conn.close()
+                
+                with open(temp_db_name, "rb") as fp:
+                    db_bytes = fp.read()
+                os.remove(temp_db_name)
 
-        st.download_button(
-          label="Download Filtered Results (SQLite DB)",
-          data=db_bytes,
-          file_name="financial_emails_filtered.db",
-          mime="application/octet-stream"
-        )
+                st.download_button(
+                    label="Download Filtered Results (SQLite DB)",
+                    data=db_bytes,
+                    file_name="financial_emails_filtered.db",
+                    mime="application/octet-stream"
+                )
 
-      # --- DISPLAY DATAFRAME ---
-      st.dataframe(filtered_df, use_container_width=True)
+            # --- DISPLAY DATAFRAME with Download Link ---
+            if 'blob_name' in filtered_df.columns:
+                filtered_df['download_link'] = filtered_df['blob_name'].apply(
+                    lambda name: generate_sas_url(AZURE_CONTAINER_NAME, name)
+                )
+                st.dataframe(
+                    filtered_df,
+                    column_config={
+                        "download_link": st.column_config.LinkColumn(
+                            "Original Email",
+                            help="Click to download the original .msg file (link expires in 1 hour)",
+                            display_text="⬇️ Download"
+                        ),
+                        "emailcontent": None, # Optionally hide the full email content column
+                    },
+                    use_container_width=True
+                )
+            else:
+                st.dataframe(filtered_df, use_container_width=True)
 
-  # ###########################################################################
-  # ######## 👋 END OF THE AWESOME NEW FILTERING SECTION! 👋 ########
-  # ###########################################################################
-
-  with nav_tab3:
-    st.header("Manage Master Lists")
-    st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
-    master_tab1, master_tab2 = st.tabs(["Master Companies", "Master Brokers"])
-    with master_tab1:
-      st.subheader("Master Company List")
-      st.dataframe(get_master_company_data(), use_container_width=True)
-    with master_tab2:
-      st.subheader("Master Broker List")
-      broker_names = get_master_broker_names()
-      if broker_names:
-        st.dataframe(pd.DataFrame(broker_names, columns=["Broker Name"]), use_container_width=True)
-      else:
-        st.warning(f"The 'master_brokers' table was not found in '{MASTER_DB_NAME}'. Please ensure your import script has run correctly.")
+    with nav_tab3:
+        st.header("Manage Master Lists")
+        st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
+        master_tab1, master_tab2 = st.tabs(["Master Companies", "Master Brokers"])
+        with master_tab1:
+            st.subheader("Master Company List")
+            st.dataframe(get_master_company_data(), use_container_width=True)
+        with master_tab2:
+            st.subheader("Master Broker List")
+            broker_names = get_master_broker_names()
+            if broker_names:
+                st.dataframe(pd.DataFrame(broker_names, columns=["Broker Name"]), use_container_width=True)
+            else:
+                st.warning(f"The 'master_brokers' table was not found in '{MASTER_DB_NAME}'.")
 
 if __name__ == "__main__":
-  main()
+    main()

@@ -9,3 +9,4 @@ thefuzz
 python-levenshtein
 sqlalchemy
 psycopg2-binary
+azure-storage-blob
