@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 import docx
 from bs4 import BeautifulSoup
-from html2docx import Html2Docx
+from htmldocx import HtmlToDocx
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -661,7 +661,7 @@ def main():
                         df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
                     
                     # Initialize the HTML to DOCX parser
-                    parser = Html2Docx()
+                    parser = HtmlToDocx()
 
                     for i, (index, row) in enumerate(df_for_export.iterrows()):
                         doc.add_page_break()
