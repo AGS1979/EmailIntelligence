@@ -361,51 +361,66 @@ def scan_outlook_emails(user_id, token, sender_domain=None):
 
 # NEW/MODIFIED: This function cleans the HTML before Word conversion
 def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
-    """
-    Parses HTML, saves embedded images to a temporary directory, and cleans
-    the HTML structure to remove forwarding artifacts.
-    """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
 
     # --- 1. Extract Main Content ---
-    # Outlook often wraps the original message in a div with this class
     main_content = soup.find('div', class_='WordSection1')
     if not main_content:
-        # If not found, fall back to the whole body, but it might be messy
         main_content = soup.body if soup.body else soup
-    
-    # If main_content is still not found, we can't proceed
     if not main_content:
         return ""
 
-    # --- 2. Save Embedded Images (CID) ---
-    # This requires re-opening the .msg file to access attachment data
-    if msg_file_path:
-        try:
-            with Message(msg_file_path) as msg:
-                cid_attachments = {att.cid: att for att in msg.attachments if att.cid}
-                if cid_attachments:
-                    for img_tag in main_content.find_all('img'):
-                        src = img_tag.get('src')
-                        if src and src.startswith('cid:'):
-                            cid = src[4:]
-                            if cid in cid_attachments:
-                                attachment = cid_attachments[cid]
-                                img_filename = attachment.longFilename or f"{cid}.png"
-                                # Sanitize filename to be safe
-                                safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", img_filename)
-                                temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                                with open(temp_img_path, "wb") as f:
-                                    f.write(attachment.data)
-                                img_tag['src'] = temp_img_path
-        except Exception as e:
-            st.warning(f"Could not process images for a docx entry: {e}")
+    # --- 2. Process all image tags ---
+    for img_tag in main_content.find_all('img'):
+        src = img_tag.get('src')
+        if not src:
+            continue
+        
+        # --- Handle Base64 encoded images ---
+        if src.startswith('data:image'):
+            try:
+                # e.g., 'data:image/png;base64,iVBORw0KGgo...'
+                header, encoded = src.split(',', 1)
+                # e.g., 'data:image/png;base64'
+                img_type = header.split(';')[0].split('/')[1]
+                
+                img_data = base64.b64decode(encoded)
+                img_filename = f"{uuid.uuid4()}.{img_type}"
+                temp_img_path = os.path.join(temp_dir, img_filename)
+                
+                with open(temp_img_path, "wb") as f:
+                    f.write(img_data)
+                
+                img_tag['src'] = temp_img_path
+            except Exception as e:
+                st.warning(f"Could not process a Base64 image: {e}")
+                # Remove the broken tag to prevent errors
+                img_tag.decompose()
+
+        # --- Handle CID embedded images (requires the .msg file) ---
+        elif src.startswith('cid:') and msg_file_path:
+            try:
+                with Message(msg_file_path) as msg:
+                    cid_attachments = {att.cid: att for att in msg.attachments if att.cid}
+                    cid = src[4:]
+                    if cid in cid_attachments:
+                        attachment = cid_attachments[cid]
+                        img_filename = attachment.longFilename or f"{cid}.png"
+                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", img_filename)
+                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                        with open(temp_img_path, "wb") as f:
+                            f.write(attachment.data)
+                        img_tag['src'] = temp_img_path
+            except Exception as e:
+                st.warning(f"Could not process CID image '{src}': {e}")
+                img_tag.decompose()
 
     # --- 3. Return the cleaned HTML as a string ---
     return str(main_content)
+
 
 def extract_info_with_chatgpt(subject, body, master_brokers):
     broker_list_str = ", ".join(master_brokers)
@@ -648,9 +663,7 @@ def main():
                 if os.path.exists(temp_db_name):
                     os.remove(temp_db_name)
                 conn = sqlite3.connect(temp_db_name)
-                # Create a copy to avoid modifying the original DataFrame
                 df_to_export = filtered_df.copy()
-                # Remove timezone if it exists to prevent errors with SQLite
                 if 'processedat' in df_to_export.columns and pd.api.types.is_datetime64_any_dtype(df_to_export['processedat']):
                     if getattr(df_to_export['processedat'].dt, 'tz', None) is not None:
                          df_to_export['processedat'] = df_to_export['processedat'].dt.tz_localize(None)
@@ -719,9 +732,9 @@ def main():
                             
                             try:
                                 parser.add_html_to_document(cleaned_html, doc)
-                            except IndexError:
+                            except (IndexError, KeyError) as e:
                                 doc.add_paragraph(
-                                    "[Content could not be rendered due to a complex or malformed table in the original email.]"
+                                    f"[Content could not be rendered due to a complex or malformed table in the original email. Error: {e}]"
                                 )
                             except Exception as e:
                                 doc.add_paragraph(
@@ -773,7 +786,7 @@ def main():
 
     with nav_tab3:
         st.header("Manage Master Lists")
-        st.info(f"This data is read from '{MASTER_DB_NAME}'.")
+        st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
         # Displaying master company data
         st.subheader("Master Company List")
         st.dataframe(get_master_company_data(), use_container_width=True)
