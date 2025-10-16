@@ -661,7 +661,7 @@ def main():
                         df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
                     
                     # Initialize the HTML to DOCX parser
-                    parser = HtmlToDocx()
+                    parser = Html2Docx()
 
                     for i, (index, row) in enumerate(df_for_export.iterrows()):
                         doc.add_page_break()
