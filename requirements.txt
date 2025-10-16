@@ -11,3 +11,5 @@ sqlalchemy
 psycopg2-binary
 azure-storage-blob
 python-docx
+beautifulsoup4
+html2docx
