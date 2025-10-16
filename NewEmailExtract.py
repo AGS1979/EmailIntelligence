@@ -6,7 +6,6 @@ import re
 from datetime import datetime, timedelta
 import uuid
 import io
-# import zipfile # No longer needed
 
 import streamlit as st
 import pandas as pd
@@ -17,7 +16,7 @@ import msal
 from thefuzz import fuzz, process
 from sqlalchemy import create_engine, text
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
-import docx # Added for Word document generation
+import docx
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -223,10 +222,6 @@ engine = create_engine(DB_CONNECTION_STRING)
 
 # --- DATABASE FUNCTIONS ---
 def setup_output_database():
-    # This function is no longer needed.
-    # The table should be created one time in the Supabase SQL Editor.
-    # Make sure you've added the new 'blob_name' column:
-    # ALTER TABLE email_data ADD COLUMN blob_name TEXT;
     pass
 
 def query_db(query, params=None):
@@ -375,6 +370,7 @@ def parse_email(file_path):
 def extract_info_with_chatgpt(subject, body, master_brokers):
     broker_list_str = ", ".join(master_brokers)
     
+    # MODIFIED PROMPT: Added FiscalYear and FiscalQuarter extraction
     prompt = f"""You are an expert financial analyst. From the email below, extract key details for each financial report mentioned.
 
     **Instructions:**
@@ -383,6 +379,8 @@ def extract_info_with_chatgpt(subject, body, master_brokers):
     3.  **BrokerName:** You MUST choose the most appropriate name from this list of known brokers: {broker_list_str}. If no suitable broker is mentioned or found, classify it as 'Unknown'.
     4.  **Category:** High-level classification like 'Equity Research'.
     5.  **ContentType:** Must be from this specific list: 'Earnings Commentary', 'Earnings Call Commentary', 'Market Update', 'Stock Initiation', 'Other'.
+    6.  **FiscalYear:** The four-digit year the report is about (e.g., 2024, 2025). Look for terms like '4Q24', 'FY25', or '2025 Results'. If not explicitly stated, infer from the email's content. If it cannot be determined, return null.
+    7.  **FiscalQuarter:** The quarter the report is about as a single number (1, 2, 3, or 4). Look for terms like 'Q3', '3Q', 'Third Quarter'. If not explicitly stated, infer from the content. If it cannot be determined, return null.
 
     **Email Details:**
     - EMAIL SUBJECT: {subject}
@@ -392,7 +390,7 @@ def extract_info_with_chatgpt(subject, body, master_brokers):
     ---
     
     Provide the output in a JSON object with a single key "reports", which is a list.
-    Example: {{"reports": [{{"Country": "USA", "Sector": "Technology", "Company": "Example Corp", "Ticker": "EXMPL", "Category": "Equity Research", "ContentType": "Earnings Commentary", "BrokerName": "Global Brokerage"}}]}}"""
+    Example: {{"reports": [{{"Country": "USA", "Sector": "Technology", "Company": "Example Corp", "Ticker": "EXMPL", "Category": "Equity Research", "ContentType": "Earnings Commentary", "BrokerName": "Global Brokerage", "FiscalYear": 2025, "FiscalQuarter": 3}}]}}"""
     try:
         response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "You are a helpful assistant designed to output JSON."}, {"role": "user", "content": prompt}], response_format={"type": "json_object"})
         return json.loads(response.choices[0].message.content)
@@ -455,6 +453,10 @@ def process_emails(email_source, source_type):
             report.setdefault('Category', 'N/A')
             report.setdefault('ContentType', 'Other')
             report.setdefault('BrokerName', 'Unknown')
+            # ADDED: Set defaults for new fiscal period fields
+            report.setdefault('FiscalYear', None)
+            report.setdefault('FiscalQuarter', None)
+            
             report['EmailSubject'] = subject
             report['EmailContent'] = body
             report['blob_name'] = blob_name
@@ -547,13 +549,7 @@ def main():
             
             if 'processedat' in all_data_df.columns:
                 all_data_df['processedat'] = pd.to_datetime(all_data_df['processedat'], errors='coerce').dt.tz_localize(None)
-                all_data_df = all_data_df.dropna(subset=['processedat'])
-                all_data_df['year'] = all_data_df['processedat'].dt.year
-                all_data_df['quarter'] = all_data_df['processedat'].dt.quarter
-            else:
-                st.warning("`processedat` column not found. Date filters are disabled.")
-                all_data_df['year'] = None
-                all_data_df['quarter'] = None
+
         except Exception as e:
             st.error(f"Could not connect to the database: {e}")
             all_data_df = pd.DataFrame()
@@ -582,12 +578,22 @@ def main():
                     selected_companies = st.multiselect("Company Name:", get_options('company'))
                     selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
                 
+                # MODIFIED: Period filters now use the extracted fiscalyear and fiscalquarter
                 with col3:
-                    years = sorted([int(x) for x in all_data_df['year'].unique() if pd.notna(x)], reverse=True)
-                    quarters = sorted([int(x) for x in all_data_df['quarter'].unique() if pd.notna(x)])
-                    
-                    selected_years = st.multiselect("Year:", options=years)
-                    selected_quarters = st.multiselect("Quarter:", options=quarters)
+                    if 'fiscalyear' in all_data_df.columns:
+                        fiscal_years = sorted([int(x) for x in all_data_df['fiscalyear'].dropna().unique()], reverse=True)
+                        selected_fiscal_years = st.multiselect("Fiscal Year:", options=fiscal_years)
+                    else:
+                        selected_fiscal_years = []
+                        st.caption("Fiscal Year filter unavailable.")
+
+                    if 'fiscalquarter' in all_data_df.columns:
+                        fiscal_quarters = sorted([int(x) for x in all_data_df['fiscalquarter'].dropna().unique()])
+                        selected_fiscal_quarters = st.multiselect("Fiscal Quarter:", options=fiscal_quarters)
+                    else:
+                        selected_fiscal_quarters = []
+                        st.caption("Fiscal Quarter filter unavailable.")
+
 
                 search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
 
@@ -602,10 +608,13 @@ def main():
                 filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
             if selected_content_types:
                 filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
-            if selected_years:
-                filtered_df = filtered_df[filtered_df['year'].isin(selected_years)]
-            if selected_quarters:
-                filtered_df = filtered_df[filtered_df['quarter'].isin(selected_quarters)]
+            
+            # MODIFIED: Apply new fiscal period filters
+            if selected_fiscal_years:
+                filtered_df = filtered_df[filtered_df['fiscalyear'].isin(selected_fiscal_years)]
+            if selected_fiscal_quarters:
+                filtered_df = filtered_df[filtered_df['fiscalquarter'].isin(selected_fiscal_quarters)]
+
             if search_query:
                 filtered_df = filtered_df[
                     filtered_df['emailsubject'].str.contains(search_query, case=False, na=False) |
@@ -616,17 +625,16 @@ def main():
 
             # --- SMART DOWNLOAD BUTTON (SQLite) ---
             if not filtered_df.empty:
+                # ... [This section remains unchanged]
                 temp_db_name = "financial_emails_export_filtered.db"
                 if os.path.exists(temp_db_name):
                     os.remove(temp_db_name)
                 conn = sqlite3.connect(temp_db_name)
                 filtered_df.to_sql('email_data', conn, if_exists='fail', index=False)
                 conn.close()
-                
                 with open(temp_db_name, "rb") as fp:
                     db_bytes = fp.read()
                 os.remove(temp_db_name)
-
                 st.download_button(
                     label="Download Filtered Results (SQLite DB)",
                     data=db_bytes,
@@ -634,30 +642,25 @@ def main():
                     mime="application/octet-stream"
                 )
             
-            # --- MODIFIED: BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
+            # --- BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
             if not filtered_df.empty:
+                # ... [This section remains unchanged]
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
-
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     doc = docx.Document()
                     doc.add_heading('Filtered Email Intelligence Report', 0)
                     doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                     doc.add_paragraph(f"Total Emails: {len(filtered_df)}")
-                    
                     progress_text = "Generating Word document... Please wait."
                     word_progress = st.progress(0, text=progress_text)
-                    
-                    # Use a copy sorted by date to avoid warnings and ensure logical order
                     df_for_export = filtered_df.copy()
-                    df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
-
+                    if 'processedat' in df_for_export.columns:
+                        df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
                     for i, (index, row) in enumerate(df_for_export.iterrows()):
                         doc.add_page_break()
-                        
                         doc.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=1)
                         doc.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=2)
-                        
                         p = doc.add_paragraph()
                         p.add_run('Date: ').bold = True
                         p.add_run(f"{row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'} | ")
@@ -665,29 +668,24 @@ def main():
                         p.add_run(f"{row.get('brokername', 'N/A')} | ")
                         p.add_run('Content Type: ').bold = True
                         p.add_run(f"{row.get('contenttype', 'N/A')}")
-                        
                         doc.add_paragraph(f"\n--- Email Body ---\n{row.get('emailcontent', 'No content available.')}")
-                        
                         word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
-
                     word_progress.empty()
-                    
                     doc_buffer = io.BytesIO()
                     doc.save(doc_buffer)
                     st.session_state['word_data'] = doc_buffer.getvalue()
                     st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                     st.rerun()
-
-            if st.session_state.get('word_data') and st.session_state.get('word_filename'):
-                st.download_button(
-                    label=f"✅ Click to Download: {st.session_state['word_filename']}",
-                    data=st.session_state['word_data'],
-                    file_name=st.session_state['word_filename'],
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
-                    use_container_width=True,
-                    on_click=lambda: [st.session_state.pop(key, None) for key in ['word_data', 'word_filename']]
-                )
+                if st.session_state.get('word_data') and st.session_state.get('word_filename'):
+                    st.download_button(
+                        label=f"✅ Click to Download: {st.session_state['word_filename']}",
+                        data=st.session_state['word_data'],
+                        file_name=st.session_state['word_filename'],
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary",
+                        use_container_width=True,
+                        on_click=lambda: [st.session_state.pop(key, None) for key in ['word_data', 'word_filename']]
+                    )
 
             # --- DISPLAY DATAFRAME with Download Link ---
             st.write("---") # Visual separator
