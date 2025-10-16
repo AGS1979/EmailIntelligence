@@ -10,3 +10,4 @@ python-levenshtein
 sqlalchemy
 psycopg2-binary
 azure-storage-blob
+python-docx
