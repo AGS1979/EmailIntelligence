@@ -5,6 +5,8 @@ import tempfile
 import re
 from datetime import datetime, timedelta
 import uuid
+import io
+# import zipfile # No longer needed
 
 import streamlit as st
 import pandas as pd
@@ -15,6 +17,7 @@ import msal
 from thefuzz import fuzz, process
 from sqlalchemy import create_engine, text
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+import docx # Added for Word document generation
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -419,7 +422,7 @@ def process_emails(email_source, source_type):
         try:
             if source_type == 'upload':
                 file_bytes = item.getvalue()
-                blob_name = f"emails/{uuid.uuid4()}.msg"
+                blob_name = f"emails/{uuid.uuid4()}-{item.name}"
                 blob_client = blob_service_client.get_blob_client(container=AZURE_CONTAINER_NAME, blob=blob_name)
                 blob_client.upload_blob(file_bytes)
                 
@@ -541,6 +544,16 @@ def main():
         try:
             all_data_df = query_db("SELECT * FROM email_data ORDER BY \"processedat\" DESC")
             all_data_df.columns = [x.lower() for x in all_data_df.columns]
+            
+            if 'processedat' in all_data_df.columns:
+                all_data_df['processedat'] = pd.to_datetime(all_data_df['processedat'], errors='coerce').dt.tz_localize(None)
+                all_data_df = all_data_df.dropna(subset=['processedat'])
+                all_data_df['year'] = all_data_df['processedat'].dt.year
+                all_data_df['quarter'] = all_data_df['processedat'].dt.quarter
+            else:
+                st.warning("`processedat` column not found. Date filters are disabled.")
+                all_data_df['year'] = None
+                all_data_df['quarter'] = None
         except Exception as e:
             st.error(f"Could not connect to the database: {e}")
             all_data_df = pd.DataFrame()
@@ -553,12 +566,12 @@ def main():
             # --- FILTER UI ---
             with st.container(border=True):
                 st.subheader("📊 Filter Your Data")
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     def get_options(column_name):
-                        if column_name in filtered_df.columns:
-                            return sorted([x for x in filtered_df[column_name].unique() if pd.notna(x)])
+                        if column_name in all_data_df.columns:
+                            return sorted([x for x in all_data_df[column_name].unique() if pd.notna(x)])
                         return []
 
                     selected_countries = st.multiselect("Country:", get_options('country'))
@@ -568,6 +581,13 @@ def main():
                 with col2:
                     selected_companies = st.multiselect("Company Name:", get_options('company'))
                     selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
+                
+                with col3:
+                    years = sorted([int(x) for x in all_data_df['year'].unique() if pd.notna(x)], reverse=True)
+                    quarters = sorted([int(x) for x in all_data_df['quarter'].unique() if pd.notna(x)])
+                    
+                    selected_years = st.multiselect("Year:", options=years)
+                    selected_quarters = st.multiselect("Quarter:", options=quarters)
 
                 search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
 
@@ -582,6 +602,10 @@ def main():
                 filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
             if selected_content_types:
                 filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
+            if selected_years:
+                filtered_df = filtered_df[filtered_df['year'].isin(selected_years)]
+            if selected_quarters:
+                filtered_df = filtered_df[filtered_df['quarter'].isin(selected_quarters)]
             if search_query:
                 filtered_df = filtered_df[
                     filtered_df['emailsubject'].str.contains(search_query, case=False, na=False) |
@@ -590,7 +614,7 @@ def main():
             
             st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
-            # --- SMART DOWNLOAD BUTTON ---
+            # --- SMART DOWNLOAD BUTTON (SQLite) ---
             if not filtered_df.empty:
                 temp_db_name = "financial_emails_export_filtered.db"
                 if os.path.exists(temp_db_name):
@@ -609,8 +633,64 @@ def main():
                     file_name="financial_emails_filtered.db",
                     mime="application/octet-stream"
                 )
+            
+            # --- MODIFIED: BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
+            if not filtered_df.empty:
+                st.write("---") 
+                st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
+
+                if st.button(f"Generate Word Document", key="generate_word_btn"):
+                    doc = docx.Document()
+                    doc.add_heading('Filtered Email Intelligence Report', 0)
+                    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    doc.add_paragraph(f"Total Emails: {len(filtered_df)}")
+                    
+                    progress_text = "Generating Word document... Please wait."
+                    word_progress = st.progress(0, text=progress_text)
+                    
+                    # Use a copy sorted by date to avoid warnings and ensure logical order
+                    df_for_export = filtered_df.copy()
+                    df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
+
+                    for i, (index, row) in enumerate(df_for_export.iterrows()):
+                        doc.add_page_break()
+                        
+                        doc.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=1)
+                        doc.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=2)
+                        
+                        p = doc.add_paragraph()
+                        p.add_run('Date: ').bold = True
+                        p.add_run(f"{row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'} | ")
+                        p.add_run('Broker: ').bold = True
+                        p.add_run(f"{row.get('brokername', 'N/A')} | ")
+                        p.add_run('Content Type: ').bold = True
+                        p.add_run(f"{row.get('contenttype', 'N/A')}")
+                        
+                        doc.add_paragraph(f"\n--- Email Body ---\n{row.get('emailcontent', 'No content available.')}")
+                        
+                        word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
+
+                    word_progress.empty()
+                    
+                    doc_buffer = io.BytesIO()
+                    doc.save(doc_buffer)
+                    st.session_state['word_data'] = doc_buffer.getvalue()
+                    st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                    st.rerun()
+
+            if st.session_state.get('word_data') and st.session_state.get('word_filename'):
+                st.download_button(
+                    label=f"✅ Click to Download: {st.session_state['word_filename']}",
+                    data=st.session_state['word_data'],
+                    file_name=st.session_state['word_filename'],
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True,
+                    on_click=lambda: [st.session_state.pop(key, None) for key in ['word_data', 'word_filename']]
+                )
 
             # --- DISPLAY DATAFRAME with Download Link ---
+            st.write("---") # Visual separator
             if 'blob_name' in filtered_df.columns:
                 filtered_df['download_link'] = filtered_df['blob_name'].apply(
                     lambda name: generate_sas_url(AZURE_CONTAINER_NAME, name)
@@ -623,7 +703,7 @@ def main():
                             help="Click to download the original .msg file (link expires in 1 hour)",
                             display_text="⬇️ Download"
                         ),
-                        "emailcontent": None, # Optionally hide the full email content column
+                        "emailcontent": None, 
                     },
                     use_container_width=True
                 )
