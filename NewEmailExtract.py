@@ -697,7 +697,14 @@ def main():
                                 except Exception as e:
                                     st.warning(f"Could not re-process email for images: {blob_name}. Error: {e}")
 
-                            parser.add_html_to_document(html_with_local_images, doc)
+                            try:
+                                # Use the parser to add the HTML content (with images) to the document
+                                parser.add_html_to_document(html_with_local_images, doc)
+                            except IndexError:
+                                # Handle cases where the htmldocx library fails on complex tables
+                                doc.add_paragraph(
+                                    "Could not render email content due to a complex or malformed table in the original email."
+                                )
                             word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
                         
                         word_progress.empty()
