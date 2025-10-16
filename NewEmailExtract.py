@@ -251,7 +251,6 @@ def insert_into_db(data):
         conn.commit()
 
 # --- MATCHING LOGIC ---
-# ... [This section remains unchanged]
 def normalize_company_name(name):
     if not isinstance(name, str):
         return ""
@@ -337,9 +336,7 @@ def find_broker_in_master(extracted_broker_name, master_broker_list):
     best_match, score = process.extractOne(extracted_broker_name, master_broker_list)
     return (best_match, score) if score >= 85 else (extracted_broker_name, score)
 
-
 # --- OUTLOOK & PARSING LOGIC ---
-# ... [This section remains unchanged]
 @st.cache_resource(ttl=3500)
 def get_graph_api_token():
     app = msal.ConfidentialClientApplication(client_id=AZURE_CLIENT_ID, authority=AUTHORITY, client_credential=AZURE_CLIENT_SECRET)
@@ -362,44 +359,55 @@ def scan_outlook_emails(user_id, token, sender_domain=None):
         st.error(f"Error fetching emails: {e}"); st.json(e.response.json())
         return None
 
+# NEW/MODIFIED: This function cleans the HTML before Word conversion
+def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
+    """
+    Parses HTML, saves embedded images to a temporary directory, and cleans
+    the HTML structure to remove forwarding artifacts.
+    """
+    if not html_string:
+        return ""
+        
+    soup = BeautifulSoup(html_string, 'html.parser')
 
-# MODIFIED: parse_email now saves images to a temp directory
-def parse_email_for_docx(file_path, temp_dir):
-    try:
-        with Message(file_path) as msg:
-            subject = msg.subject
-            plain_body = msg.body
-            html_body = msg.htmlBody
+    # --- 1. Extract Main Content ---
+    # Outlook often wraps the original message in a div with this class
+    main_content = soup.find('div', class_='WordSection1')
+    if not main_content:
+        # If not found, fall back to the whole body, but it might be messy
+        main_content = soup.body if soup.body else soup
+    
+    # If main_content is still not found, we can't proceed
+    if not main_content:
+        return ""
 
-            if not html_body:
-                return subject, plain_body, f"<pre>{plain_body}</pre>"
+    # --- 2. Save Embedded Images (CID) ---
+    # This requires re-opening the .msg file to access attachment data
+    if msg_file_path:
+        try:
+            with Message(msg_file_path) as msg:
+                cid_attachments = {att.cid: att for att in msg.attachments if att.cid}
+                if cid_attachments:
+                    for img_tag in main_content.find_all('img'):
+                        src = img_tag.get('src')
+                        if src and src.startswith('cid:'):
+                            cid = src[4:]
+                            if cid in cid_attachments:
+                                attachment = cid_attachments[cid]
+                                img_filename = attachment.longFilename or f"{cid}.png"
+                                # Sanitize filename to be safe
+                                safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", img_filename)
+                                temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                                with open(temp_img_path, "wb") as f:
+                                    f.write(attachment.data)
+                                img_tag['src'] = temp_img_path
+        except Exception as e:
+            st.warning(f"Could not process images for a docx entry: {e}")
 
-            cid_attachments = {att.cid: att for att in msg.attachments if att.cid}
-            if not cid_attachments:
-                return subject, plain_body, html_body
-
-            soup = BeautifulSoup(html_body, 'html.parser')
-            for img_tag in soup.find_all('img'):
-                src = img_tag.get('src')
-                if src and src.startswith('cid:'):
-                    cid = src[4:]
-                    if cid in cid_attachments:
-                        attachment = cid_attachments[cid]
-                        # Save the image to a temporary file
-                        img_filename = attachment.longFilename or f"{cid}.png"
-                        temp_img_path = os.path.join(temp_dir, img_filename)
-                        with open(temp_img_path, "wb") as f:
-                            f.write(attachment.data)
-                        # Update the src to point to the local file path
-                        img_tag['src'] = temp_img_path
-            
-            return subject, plain_body, str(soup)
-    except Exception as e:
-        st.error(f"Error parsing file for docx: {e}")
-        return None, None, None
+    # --- 3. Return the cleaned HTML as a string ---
+    return str(main_content)
 
 def extract_info_with_chatgpt(subject, body, master_brokers):
-    # ... [This function remains unchanged]
     broker_list_str = ", ".join(master_brokers)
     
     prompt = f"""You are an expert financial analyst. From the email below, extract key details for each financial report mentioned.
@@ -441,9 +449,6 @@ def process_emails(email_source, source_type):
     progress_bar = st.progress(0, text="Initializing...")
     total_emails = len(email_source)
     
-    # We only need a temporary directory during Word file generation, not here.
-    # The database will store the raw HTML without modified paths.
-    
     for i, item in enumerate(email_source):
         subject, plain_body, raw_html_body = (None, None, None)
         blob_name = None
@@ -458,7 +463,6 @@ def process_emails(email_source, source_type):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".msg") as tmp:
                     tmp.write(file_bytes)
                 
-                # We need the original HTML for the database, so we parse it simply here.
                 with Message(tmp.name) as msg:
                     subject = msg.subject
                     plain_body = msg.body
@@ -489,14 +493,18 @@ def process_emails(email_source, source_type):
         for report in extracted["reports"]:
             report.setdefault('Company', 'N/A')
             report.setdefault('Ticker', None)
-            # ... (other setdefault calls)
+            report.setdefault('BrokerName', 'Unknown')
+            report.setdefault('FiscalYear', None)
+            report.setdefault('FiscalQuarter', None)
+            report.setdefault('Category', 'N/A')
+            report.setdefault('ContentType', 'Other')
+            report.setdefault('Country', 'N/A')
+            report.setdefault('Sector', 'N/A')
             
             report['EmailSubject'] = subject
-            # Store the original, unmodified HTML in the database
-            report['EmailContent'] = raw_html_body 
+            report['EmailContent'] = raw_html_body
             report['blob_name'] = blob_name
 
-            # ... (rest of the processing logic)
             company_to_find = report.get("Company", "N/A")
             matched_row, match_status = find_company_in_master(report, master_companies_df.copy())
 
@@ -516,12 +524,10 @@ def process_emails(email_source, source_type):
 
 
 # --- AZURE SAS URL HELPER ---
-# ... [This function remains unchanged]
 def generate_sas_url(container_name, blob_name):
     if not blob_name or pd.isna(blob_name):
         return None
     try:
-        # ... (rest of the function is unchanged)
         account_name = blob_service_client.account_name
         account_key = blob_service_client.credential.account_key
         sas_token = generate_blob_sas(
@@ -547,7 +553,6 @@ def main():
     ])
 
     with nav_tab1:
-        # ... [This section remains unchanged]
         st.header("Scan & Process Emails")
         scan_tab1, scan_tab2 = st.tabs(["Scan Outlook Inbox", "Upload .msg Files"])
         with scan_tab1:
@@ -592,7 +597,6 @@ def main():
             filtered_df = all_data_df.copy()
 
             # --- FILTER UI ---
-            # ... [This section remains unchanged]
             with st.container(border=True):
                 st.subheader("📊 Filter Your Data")
                 col1, col2, col3 = st.columns(3)
@@ -617,7 +621,6 @@ def main():
                 search_query = st.text_input("Open Search (Subject or Content):", placeholder="e.g., 'acquisition' or 'earnings call'")
 
             # --- APPLY FILTERS ---
-            # ... [This section remains unchanged]
             if selected_countries:
                 filtered_df = filtered_df[filtered_df['country'].isin(selected_countries)]
             if selected_brokers:
@@ -641,8 +644,28 @@ def main():
             st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
             if not filtered_df.empty:
-                # ... (SQLite download logic is unchanged but omitted for brevity)
-                pass
+                temp_db_name = "financial_emails_export_filtered.db"
+                if os.path.exists(temp_db_name):
+                    os.remove(temp_db_name)
+                conn = sqlite3.connect(temp_db_name)
+                # Create a copy to avoid modifying the original DataFrame
+                df_to_export = filtered_df.copy()
+                # Remove timezone if it exists to prevent errors with SQLite
+                if 'processedat' in df_to_export.columns and pd.api.types.is_datetime64_any_dtype(df_to_export['processedat']):
+                    if getattr(df_to_export['processedat'].dt, 'tz', None) is not None:
+                         df_to_export['processedat'] = df_to_export['processedat'].dt.tz_localize(None)
+                df_to_export.to_sql('email_data', conn, if_exists='fail', index=False)
+                conn.close()
+                with open(temp_db_name, "rb") as fp:
+                    db_bytes = fp.read()
+                os.remove(temp_db_name)
+
+                st.download_button(
+                    label="Download Filtered Results (SQLite DB)",
+                    data=db_bytes,
+                    file_name="financial_emails_filtered.db",
+                    mime="application/octet-stream"
+                )
             
             # --- MODIFIED: BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
             if not filtered_df.empty:
@@ -650,7 +673,6 @@ def main():
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     
-                    # Use a context manager for a temporary directory to ensure cleanup
                     with tempfile.TemporaryDirectory() as temp_dir:
                         doc = docx.Document()
                         doc.add_heading('Filtered Email Intelligence Report', 0)
@@ -676,35 +698,37 @@ def main():
                             p.add_run('Broker: ').bold = True
                             p.add_run(f"{row.get('brokername', 'N/A')}")
                             
-                            # To handle images, we need to re-parse the original .msg file
-                            # This is inefficient but necessary with the current library
-                            html_with_local_images = row.get('emailcontent', '<p>No content available.</p>')
+                            cleaned_html = row.get('emailcontent', '<p>No content available.</p>')
                             blob_name = row.get('blob_name')
+                            tmp_msg_path = None
+
                             if blob_name and pd.notna(blob_name):
                                 try:
-                                    # Download the original .msg from Azure Blob Storage
                                     blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
-                                    downloader = blob_client.download_blob()
-                                    msg_bytes = downloader.readall()
-
-                                    # Write to a temporary .msg file
-                                    with tempfile.NamedTemporaryFile(delete=False, suffix=".msg", dir=temp_dir) as tmp_msg:
-                                        tmp_msg.write(msg_bytes)
+                                    msg_bytes = blob_client.download_blob().readall()
                                     
-                                    # Now parse it with the image-saving function
-                                    _, _, html_with_local_images = parse_email_for_docx(tmp_msg.name, temp_dir)
+                                    fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
+                                    with os.fdopen(fd, 'wb') as tmp_file:
+                                        tmp_file.write(msg_bytes)
                                     
+                                    original_html = row.get('emailcontent', '')
+                                    cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
+                                
                                 except Exception as e:
-                                    st.warning(f"Could not re-process email for images: {blob_name}. Error: {e}")
-
+                                    st.warning(f"Could not re-process email to extract images: {blob_name}. Error: {e}")
+                            
                             try:
-                                # Use the parser to add the HTML content (with images) to the document
-                                parser.add_html_to_document(html_with_local_images, doc)
+                                parser.add_html_to_document(cleaned_html, doc)
                             except IndexError:
-                                # Handle cases where the htmldocx library fails on complex tables
                                 doc.add_paragraph(
-                                    "Could not render email content due to a complex or malformed table in the original email."
+                                    "[Content could not be rendered due to a complex or malformed table in the original email.]"
                                 )
+                            except Exception as e:
+                                doc.add_paragraph(
+                                    f"[An unexpected error occurred while rendering email content: {e}]"
+                                )
+
+
                             word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
                         
                         word_progress.empty()
@@ -726,22 +750,40 @@ def main():
                     )
 
             # --- DISPLAY DATAFRAME with Download Link ---
-            # ... [This section is unchanged]
             st.write("---")
             if 'blob_name' in filtered_df.columns:
+                display_df = filtered_df.copy()
+                display_df['download_link'] = display_df['blob_name'].apply(
+                    lambda name: generate_sas_url(AZURE_CONTAINER_NAME, name)
+                )
                 st.dataframe(
-                    filtered_df,
-                    column_config={"emailcontent": None},
+                    display_df,
+                    column_config={
+                        "download_link": st.column_config.LinkColumn(
+                            "Original Email",
+                            help="Click to download the original .msg file (link expires in 1 hour)",
+                            display_text="⬇️ Download"
+                        ),
+                        "emailcontent": None,
+                    },
                     use_container_width=True
                 )
             else:
                 st.dataframe(filtered_df, use_container_width=True)
 
     with nav_tab3:
-        # ... [This section is unchanged]
         st.header("Manage Master Lists")
         st.info(f"This data is read from '{MASTER_DB_NAME}'.")
+        # Displaying master company data
+        st.subheader("Master Company List")
         st.dataframe(get_master_company_data(), use_container_width=True)
+        # Displaying master broker data
+        st.subheader("Master Broker List")
+        broker_names = get_master_broker_names()
+        if broker_names:
+            st.dataframe(pd.DataFrame(broker_names, columns=["Broker Name"]), use_container_width=True)
+        else:
+            st.warning(f"The 'master_brokers' table was not found in '{MASTER_DB_NAME}'.")
 
 if __name__ == "__main__":
     main()
