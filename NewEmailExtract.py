@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 import docx
 from bs4 import BeautifulSoup
-from html2docx import HtmlToDocx
+from html2docx import Html2Docx
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
