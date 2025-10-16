@@ -370,7 +370,6 @@ def parse_email(file_path):
 def extract_info_with_chatgpt(subject, body, master_brokers):
     broker_list_str = ", ".join(master_brokers)
     
-    # MODIFIED PROMPT: Added FiscalYear and FiscalQuarter extraction
     prompt = f"""You are an expert financial analyst. From the email below, extract key details for each financial report mentioned.
 
     **Instructions:**
@@ -453,7 +452,6 @@ def process_emails(email_source, source_type):
             report.setdefault('Category', 'N/A')
             report.setdefault('ContentType', 'Other')
             report.setdefault('BrokerName', 'Unknown')
-            # ADDED: Set defaults for new fiscal period fields
             report.setdefault('FiscalYear', None)
             report.setdefault('FiscalQuarter', None)
             
@@ -578,7 +576,6 @@ def main():
                     selected_companies = st.multiselect("Company Name:", get_options('company'))
                     selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
                 
-                # MODIFIED: Period filters now use the extracted fiscalyear and fiscalquarter
                 with col3:
                     if 'fiscalyear' in all_data_df.columns:
                         fiscal_years = sorted([int(x) for x in all_data_df['fiscalyear'].dropna().unique()], reverse=True)
@@ -609,7 +606,6 @@ def main():
             if selected_content_types:
                 filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
             
-            # MODIFIED: Apply new fiscal period filters
             if selected_fiscal_years:
                 filtered_df = filtered_df[filtered_df['fiscalyear'].isin(selected_fiscal_years)]
             if selected_fiscal_quarters:
@@ -625,7 +621,6 @@ def main():
 
             # --- SMART DOWNLOAD BUTTON (SQLite) ---
             if not filtered_df.empty:
-                # ... [This section remains unchanged]
                 temp_db_name = "financial_emails_export_filtered.db"
                 if os.path.exists(temp_db_name):
                     os.remove(temp_db_name)
@@ -644,7 +639,6 @@ def main():
             
             # --- BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
             if not filtered_df.empty:
-                # ... [This section remains unchanged]
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
@@ -668,14 +662,41 @@ def main():
                         p.add_run(f"{row.get('brokername', 'N/A')} | ")
                         p.add_run('Content Type: ').bold = True
                         p.add_run(f"{row.get('contenttype', 'N/A')}")
-                        doc.add_paragraph(f"\n--- Email Body ---\n{row.get('emailcontent', 'No content available.')}")
+                        
+                        # --- MODIFIED SECTION START ---
+                        # This new block replaces the previous single doc.add_paragraph line
+                        # to handle and remove excess blank lines.
+                        doc.add_paragraph("--- Email Body ---")
+                        email_body = row.get('emailcontent', 'No content available.')
+                        
+                        # Normalize line endings and split into a list of lines
+                        lines = email_body.replace('\r\n', '\n').split('\n')
+                        
+                        was_previous_line_blank = False
+                        for line in lines:
+                            # A line is considered blank if it's empty after stripping whitespace
+                            current_line_is_blank = not line.strip()
+                            
+                            # If the current line is blank AND the previous one was also blank, skip it.
+                            if current_line_is_blank and was_previous_line_blank:
+                                continue
+                            
+                            # Add the line as a new paragraph to the document
+                            doc.add_paragraph(line)
+                            
+                            # Update the state for the next iteration
+                            was_previous_line_blank = current_line_is_blank
+                        # --- MODIFIED SECTION END ---
+
                         word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
+                    
                     word_progress.empty()
                     doc_buffer = io.BytesIO()
                     doc.save(doc_buffer)
                     st.session_state['word_data'] = doc_buffer.getvalue()
                     st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                     st.rerun()
+
                 if st.session_state.get('word_data') and st.session_state.get('word_filename'):
                     st.download_button(
                         label=f"✅ Click to Download: {st.session_state['word_filename']}",
