@@ -553,78 +553,121 @@ def process_emails(email_source, source_type):
     st.success("✅ Processing complete! The database has been updated.")
 
 
-# <<< ADD THIS NEW RECURSIVE "WALKER" FUNCTION >>>
-def walk_and_build(element, doc, table_parser):
+# <<< NEW HELPER FUNCTION 1: THE RECURSIVE WALKER >>>
+def walk_and_build(element, doc):
     """
-    Recursively walks through HTML elements to build a Word document.
-    It processes "atomic" tags (like <p>, <img>) and traverses "container" tags (like <div>).
-    This prevents duplication and ensures all content is processed in order.
+    THIS IS THE CORE FIX.
+    Recursively walks through HTML elements and manually adds them to the docx object.
+    It handles tables by building them from scratch, avoiding external parser bugs.
     """
+    # If the element is not a tag (e.g., just a text string), we can often ignore it
+    # as the parent tag should handle it. But we'll check just in case.
     if not hasattr(element, 'name') or element.name is None:
+        if hasattr(element, 'strip') and element.strip():
+            doc.add_paragraph(element.strip())
         return
 
-    ATOMIC_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'img', 'table']
-    IGNORED_TAGS = ['script', 'style', 'head']
-
+    # --- Process based on tag name ---
     tag_name = element.name
+    
+    if tag_name in ['script', 'style']:
+        return # Skip non-visible content
 
-    if tag_name in IGNORED_TAGS:
-        return
-
-    if tag_name in ATOMIC_TAGS:
-        if tag_name == 'p':
-            text = element.get_text(strip=True)
-            if text:
+    if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+        text = element.get_text(strip=True)
+        if text: # Ensure we don't just add empty paragraphs
+            if tag_name.startswith('h'):
+                doc.add_heading(text, level=int(tag_name[1]))
+            else:
                 doc.add_paragraph(text)
-        elif tag_name.startswith('h'):
-            doc.add_heading(element.get_text(strip=True), level=int(tag_name[1]))
-        elif tag_name == 'li':
-            doc.add_paragraph(element.get_text(strip=True), style='List Bullet')
-        elif tag_name == 'img':
-            img_src = element.get('src')
-            if img_src and os.path.exists(img_src):
-                try:
-                    doc.add_picture(img_src)
-                except Exception as e:
-                    # FIX: Removed style="Emphasis"
-                    doc.add_paragraph(f"[Failed to render image: {os.path.basename(img_src)}. Error: {e}]")
-        elif tag_name == 'table':
-            try:
-                table_parser.add_html_to_document(str(element), doc)
-            except Exception:
-                # FIX: Removed style="Emphasis"
-                doc.add_paragraph("[Table could not be formatted, displaying as text:]")
-                for row in element.find_all('tr'):
-                    cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
-                    doc.add_paragraph(" | ".join(cells))
-    else:
-        for child in element.children:
-            walk_and_build(child, doc, table_parser)
 
-# <<< ADD THIS NEW ORCHESTRATOR FUNCTION >>>
+    elif tag_name == 'ul':
+        for li in element.find_all('li', recursive=False):
+            doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
+
+    elif tag_name == 'img':
+        img_src = element.get('src')
+        if img_src and os.path.exists(img_src):
+            try:
+                doc.add_picture(img_src)
+            except Exception as e:
+                doc.add_paragraph(f"[ERROR: Failed to add image {os.path.basename(img_src)}: {e}]")
+        else:
+            # This can happen if an image was in the HTML but couldn't be saved
+            doc.add_paragraph(f"[Image not found at path: {img_src}]")
+
+    elif tag_name == 'table':
+        try:
+            # --- MANUAL TABLE PARSING ---
+            rows = element.find_all('tr')
+            if not rows: # Skip if table has no rows
+                 # Recursively process children in case it's a layout table with no <tr>
+                for child in element.children:
+                    walk_and_build(child, doc)
+                return
+
+            # Find max number of columns in any row
+            num_cols = 0
+            for row in rows:
+                cols = row.find_all(['th', 'td'])
+                num_cols = max(num_cols, len(cols))
+
+            if num_cols == 0: # Skip if no columns found
+                return
+
+            # Create the table in the docx file
+            docx_table = doc.add_table(rows=0, cols=num_cols)
+            docx_table.style = 'Table Grid'
+
+            # Iterate through each <tr> tag and add it to the docx table
+            for html_row in rows:
+                docx_row_cells = docx_table.add_row().cells
+                html_cells = html_row.find_all(['th', 'td'])
+                # Populate cells, handling rowspan and colspan if necessary in future
+                for i in range(num_cols):
+                    if i < len(html_cells):
+                        docx_row_cells[i].text = html_cells[i].get_text(strip=True)
+
+        except Exception as e:
+            doc.add_paragraph(f"[FATAL TABLE ERROR: Could not parse table. Extracting as text. Error: {e}]")
+            doc.add_paragraph(element.get_text(strip=True))
+
+    else:
+        # --- RECURSIVE STEP for container tags (div, body, span, etc.) ---
+        # This ensures we explore the entire document tree.
+        for child in element.children:
+            walk_and_build(child, doc)
+
+
+# <<< NEW HELPER FUNCTION 2: THE ORCHESTRATOR >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     """
-    Orchestrator function that cleans the HTML and starts the recursive walk.
+    Orchestrator: Cleans HTML (saving images) and then starts the robust recursive walk.
     """
     if not html_string:
+        doc.add_paragraph("[No HTML content provided.]")
         return
 
-    cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
+    # STEP 1: Clean HTML and save images. This is CRITICAL.
+    # It modifies the HTML string, replacing image sources with local file paths.
+    try:
+        cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
+    except Exception as e:
+        doc.add_paragraph(f"[CRITICAL ERROR during initial HTML cleaning/image saving: {e}]")
+        return
+
     if not cleaned_html:
-        # FIX: Removed style="Emphasis"
         doc.add_paragraph("[Email content was empty after cleaning.]")
         return
 
     soup = BeautifulSoup(cleaned_html, 'html.parser')
-    
     main_content = soup.find('div', class_='WordSection1') or soup.body
     
     if main_content:
-        table_parser = HtmlToDocx()
-        walk_and_build(main_content, doc, table_parser)
+        # STEP 2: Start the reliable recursive walk on the cleaned HTML.
+        walk_and_build(main_content, doc)
     else:
-        # FIX: Removed style="Emphasis"
-        doc.add_paragraph("[Could not find main content block in the email.]")
+        doc.add_paragraph("[Could not find main content block in email.]")
 
 
 
