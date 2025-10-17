@@ -560,50 +560,44 @@ def walk_and_build(element, doc, table_parser):
     It processes "atomic" tags (like <p>, <img>) and traverses "container" tags (like <div>).
     This prevents duplication and ensures all content is processed in order.
     """
-    # If the element is just a text string or a comment, we ignore it.
-    # The parent tag (like <p>) is responsible for handling its own text.
     if not hasattr(element, 'name') or element.name is None:
         return
 
-    # Define which tags are final content and which are just wrappers
     ATOMIC_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'img', 'table']
-    IGNORED_TAGS = ['script', 'style', 'head'] # We don't want to process these
+    IGNORED_TAGS = ['script', 'style', 'head']
 
     tag_name = element.name
 
     if tag_name in IGNORED_TAGS:
-        return # Skip this tag and everything inside it
+        return
 
     if tag_name in ATOMIC_TAGS:
-        # --- This is an ATOMIC tag. We process it and STOP going deeper. ---
         if tag_name == 'p':
             text = element.get_text(strip=True)
-            if text: # Don't add paragraphs that are just whitespace
+            if text:
                 doc.add_paragraph(text)
         elif tag_name.startswith('h'):
             doc.add_heading(element.get_text(strip=True), level=int(tag_name[1]))
         elif tag_name == 'li':
-             doc.add_paragraph(element.get_text(strip=True), style='List Bullet')
+            doc.add_paragraph(element.get_text(strip=True), style='List Bullet')
         elif tag_name == 'img':
             img_src = element.get('src')
             if img_src and os.path.exists(img_src):
                 try:
                     doc.add_picture(img_src)
                 except Exception as e:
-                    doc.add_paragraph(f"[Failed to render image: {os.path.basename(img_src)}. Error: {e}]", style="Emphasis")
+                    # FIX: Removed style="Emphasis"
+                    doc.add_paragraph(f"[Failed to render image: {os.path.basename(img_src)}. Error: {e}]")
         elif tag_name == 'table':
             try:
-                # Use the dedicated parser for the complex table structure
                 table_parser.add_html_to_document(str(element), doc)
             except Exception:
-                # If the table is malformed, fall back to extracting its text
-                doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
+                # FIX: Removed style="Emphasis"
+                doc.add_paragraph("[Table could not be formatted, displaying as text:]")
                 for row in element.find_all('tr'):
                     cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
                     doc.add_paragraph(" | ".join(cells))
     else:
-        # --- This is a CONTAINER tag (div, span, body, etc.). ---
-        # We don't add it directly, but we must process its children.
         for child in element.children:
             walk_and_build(child, doc, table_parser)
 
@@ -615,25 +609,22 @@ def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     if not html_string:
         return
 
-    # 1. Clean the HTML and, crucially, save all images to the temp folder
-    #    while rewriting their 'src' attributes to point to the local files.
     cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
     if not cleaned_html:
-        doc.add_paragraph("[Email content was empty after cleaning.]", style="Emphasis")
+        # FIX: Removed style="Emphasis"
+        doc.add_paragraph("[Email content was empty after cleaning.]")
         return
 
     soup = BeautifulSoup(cleaned_html, 'html.parser')
     
-    # Find the main content block of the email
     main_content = soup.find('div', class_='WordSection1') or soup.body
     
     if main_content:
-        # We only need one parser instance to handle all tables
         table_parser = HtmlToDocx()
-        # 2. Start the recursive walk
         walk_and_build(main_content, doc, table_parser)
     else:
-        doc.add_paragraph("[Could not find main content block in the email.]", style="Emphasis")
+        # FIX: Removed style="Emphasis"
+        doc.add_paragraph("[Could not find main content block in the email.]")
 
 
 
