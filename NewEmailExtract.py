@@ -588,7 +588,7 @@ def process_emails(email_source, source_type):
                 raw_html_body = plain_body
                 
             if blob_name:
-                status_container.info(f"📤 Saved original email to Azure with name: {blob_name}")
+                status_container.info(f"📤 Saved original email")
 
         except Exception as e:
             st.error(f"Failed during file handling or Azure upload: {e}")
@@ -655,7 +655,7 @@ def generate_sas_url(container_name, blob_name):
 
 def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=None):
     """
-    Final version that prevents image cutoff in Word documents
+    Final version that prevents image cutoff in Word documents with better image handling
     """
     if not html_string:
         return ""
@@ -683,10 +683,13 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
             img_tag.decompose()
             continue
         
-        # Remove any problematic width/height attributes
+        # FIX 1: Remove problematic width/height attributes that cause cutoff
         for attr in ['width', 'height', 'style']:
             if img_tag.has_attr(attr):
                 del img_tag[attr]
+        
+        # FIX 2: Add CSS that prevents image cutoff in Word
+        img_tag['style'] = 'max-width: 100%; height: auto;'
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
@@ -730,12 +733,26 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
 
     # --- Fix table layouts to prevent cutoff ---
     for table in main_content.find_all('table'):
-        # Remove problematic width attributes
+        # Remove problematic width attributes that cause cutoff
         for attr in ['width', 'style']:
             if table.has_attr(attr):
                 del table[attr]
+        
+        # FIX 3: Add table styling that works better in Word
+        table['style'] = 'width: 100%; border-collapse: collapse;'
 
-    # Return the cleaned HTML as a string
+    # FIX 4: Add a container div with proper styling for Word compatibility
+    if main_content.find():
+        container_div = soup.new_tag('div')
+        container_div['style'] = 'width: 100%; max-width: 100%; margin: 0; padding: 0;'
+        
+        # Move all content into the container
+        for element in list(main_content.contents):
+            container_div.append(element)
+        
+        main_content.clear()
+        main_content.append(container_div)
+
     return str(main_content)
 
 # --- MAIN UI ---
@@ -869,11 +886,12 @@ def main():
                         with tempfile.TemporaryDirectory() as temp_dir:
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-                                # Simple, Word-compatible styling
+                                # Improved Word-compatible styling
                                 '<style>',
-                                'body { margin: 1in; font-family: "Calibri", sans-serif; }',
-                                'img { max-width: 6.5in; height: auto; }',
-                                'table { max-width: 6.5in; }',
+                                'body { margin: 1in; font-family: "Calibri", sans-serif; width: 100%; max-width: 100%; }',
+                                'img { max-width: 6.3in !important; height: auto !important; display: block; margin: 0 auto; }',  # Reduced from 6.5in to 6.3in for margin
+                                'table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; }',
+                                'div, p { max-width: 100%; overflow-wrap: break-word; }',
                                 '.email-divider { border-top: 3px solid #1e70bf; margin: 30px 0; padding: 15px; background: #f8fafc; text-align: center; }',
                                 '.email-header { background: #e8f0fe; padding: 15px; margin-bottom: 15px; border-left: 4px solid #1e70bf; }',
                                 '</style>',
@@ -942,13 +960,17 @@ def main():
                                 # Define a path for the temporary output file inside the temp_dir
                                 output_filename = os.path.join(temp_dir, "output.docx")
                                 
-                                # FIXED: Remove the problematic --reference-doc parameter
+                                # FIX 5: Add pypandoc arguments that help with image rendering
                                 pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
                                     format='html',
                                     outputfile=output_filename,
-                                    extra_args=[f'--resource-path={temp_dir}']
+                                    extra_args=[
+                                        f'--resource-path={temp_dir}',
+                                        '--wrap=none',  # Prevents unwanted text wrapping
+                                        '--reference-doc=/path/to/custom/reference.docx'  # Optional: create a custom reference doc
+                                    ]
                                 )
                                 
                                 # Read the generated file's bytes into memory for the download button
@@ -958,7 +980,7 @@ def main():
                                 st.session_state['word_data'] = output_docx_bytes
                                 st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                                 st.success("✅ Word document generated successfully!")
-                            
+                                
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Error: {e}")
                                         
