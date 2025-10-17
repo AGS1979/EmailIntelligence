@@ -553,6 +553,110 @@ def generate_sas_url(container_name, blob_name):
     except Exception:
         return None
 
+# --- IMPROVED HTML CLEANING FOR DOCX CONVERSION ---
+def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=None):
+    """
+    Improved version that handles images and table layouts better for Word conversion
+    """
+    if not html_string:
+        return ""
+        
+    soup = BeautifulSoup(html_string, 'html.parser')
+
+    # --- Remove known junk/boilerplate elements ---
+    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
+    for element in caution_elements:
+        parent_container = element.find_parent('table') or element.find_parent('div')
+        if parent_container:
+            parent_container.decompose()
+
+    # --- Extract the main content section ---
+    main_content = soup.find('div', class_='WordSection1')
+    if not main_content:
+        main_content = soup.body if soup.body else soup
+    if not main_content:
+        return ""
+
+    # --- Process all image tags to create local file paths ---
+    for img_tag in main_content.find_all('img'):
+        src = img_tag.get('src')
+        if not src:
+            img_tag.decompose()
+            continue
+        
+        # --- Handle Base64 encoded images ---
+        if src.startswith('data:image'):
+            try:
+                header, encoded = src.split(',', 1)
+                img_type = header.split(';')[0].split('/')[1]
+                img_data = base64.b64decode(encoded)
+                img_filename = f"{uuid.uuid4()}.{img_type}"
+                temp_img_path = os.path.join(temp_dir, img_filename)
+                
+                with open(temp_img_path, "wb") as f:
+                    f.write(img_data)
+                
+                img_tag['src'] = temp_img_path
+                
+                # Add styling to prevent image cutoff
+                img_tag['style'] = 'max-width: 100%; height: auto;'
+                
+            except Exception as e:
+                st.warning(f"Could not process a Base64 image: {e}")
+                img_tag.decompose()
+
+        # --- Handle CID embedded images (from .msg file) ---
+        elif src.startswith('cid:') and msg_file_path:
+            try:
+                with Message(msg_file_path) as msg:
+                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
+                    cid = src[4:]
+                    
+                    if cid in cid_attachments:
+                        attachment = cid_attachments[cid]
+                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
+                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                        
+                        with open(temp_img_path, "wb") as f:
+                            f.write(attachment.data)
+                        img_tag['src'] = temp_img_path
+                        
+                        # Add styling to prevent image cutoff
+                        img_tag['style'] = 'max-width: 100%; height: auto;'
+                    else:
+                        img_tag.decompose()
+
+            except Exception as e:
+                st.warning(f"Could not process CID image '{src}': {e}")
+                img_tag.decompose()
+
+    # --- Fix table layouts to prevent cutoff ---
+    for table in main_content.find_all('table'):
+        # Remove fixed widths that might cause cutoff
+        if table.has_attr('width'):
+            del table['width']
+        if table.has_attr('style'):
+            # Remove fixed width from style and add responsive styling
+            style = table['style']
+            style = re.sub(r'width\s*:\s*\d+px\s*;?', '', style)
+            style = re.sub(r'width\s*:\s*\d+%\s*;?', '', style)
+            table['style'] = style + '; width: 100%;'
+
+    # --- Add responsive styling to prevent content cutoff ---
+    responsive_style = """
+    <style>
+        body { margin: 0; padding: 10px; font-family: Arial, sans-serif; }
+        table { width: 100% !important; border-collapse: collapse; }
+        img { max-width: 100% !important; height: auto !important; }
+        div, p, span { max-width: 100% !important; }
+        .email-container { border: 1px solid #ddd; margin: 15px 0; padding: 15px; background: #f9f9f9; }
+        .email-header { background: #e8e8e8; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+    </style>
+    """
+    
+    # Return the cleaned HTML with responsive styling
+    return responsive_style + str(main_content)
+
 # --- MAIN UI ---
 def main():
     st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
@@ -676,7 +780,7 @@ def main():
                     mime="application/octet-stream"
                 )
             
-                # --- FINAL, STABLE WORD DOCUMENT GENERATION ---
+                # --- IMPROVED WORD DOCUMENT GENERATION ---
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
@@ -685,7 +789,8 @@ def main():
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>',
                                 f"<h1>Filtered Email Intelligence Report</h1>",
-                                f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>"
+                                f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
+                                f"<p>Total Emails: {len(filtered_df)}</p><hr>"
                             ]
 
                             df_for_export = filtered_df.copy()
@@ -693,30 +798,30 @@ def main():
                                 df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
                             for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                all_html_parts.append('<div style="page-break-before: always;"></div>')
-                                all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
-                                all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
+                                # --- CLEAR EMAIL DEMARCATION ---
+                                all_html_parts.append(f'<div class="email-container" style="border: 2px solid #1e70bf; margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 8px; page-break-inside: avoid;">')
+                                all_html_parts.append(f'<div class="email-header" style="background: #1e70bf; color: white; padding: 12px; margin: -20px -20px 15px -20px; border-radius: 6px 6px 0 0;">')
+                                all_html_parts.append(f'<h2 style="margin: 0; color: white;">Email {i+1} of {len(df_for_export)}</h2>')
+                                all_html_parts.append('</div>')
+                                
+                                all_html_parts.append(f"<h3>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h3>")
+                                all_html_parts.append(f"<h4>Subject: {row.get('emailsubject', 'No Subject')}</h4>")
                                 date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
-                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')}</p><hr>")
+                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}</p>")
+                                all_html_parts.append(f"<p><b>Fiscal Period:</b> Q{row.get('fiscalquarter', 'N/A')} {row.get('fiscalyear', 'N/A')}</p><hr>")
                                 
                                 original_html = row.get('emailcontent', '<p>No content available.</p>')
 
-
-                                # === FIX: Handle hexadecimal encoded content from database ===
+                                # Handle hexadecimal encoded content from database
                                 if isinstance(original_html, str) and original_html.startswith('\\x'):
                                     try:
-                                        # Remove the '\\x' prefix and decode the hex string
                                         hex_string = original_html.replace('\\x', '')
                                         decoded_bytes = bytes.fromhex(hex_string)
                                         original_html = decoded_bytes.decode('utf-8', errors='ignore')
                                         st.success(f"✅ Successfully decoded hexadecimal content for email {i+1}")
                                     except Exception as hex_decode_error:
                                         st.warning(f"Failed to decode hexadecimal content for email {i+1}: {hex_decode_error}")
-                                        # Fallback to showing the raw content
                                         original_html = f"<pre>Hexadecimal content could not be decoded: {original_html[:500]}...</pre>"
-                                # === END OF FIX ===
-
-
 
                                 blob_name = row.get('blob_name')
                                 tmp_msg_path = None
@@ -731,8 +836,16 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
+                                # Use the improved HTML cleaning function
+                                cleaned_html = parse_and_clean_html_for_docx_improved(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
+                                
+                                # Close the email container
+                                all_html_parts.append('</div>')
+                                
+                                # Add page break between emails (except for the last one)
+                                if i < len(df_for_export) - 1:
+                                    all_html_parts.append('<div style="page-break-after: always;"></div>')
 
                             all_html_parts.append('</body></html>')
                             full_html_content = "".join(all_html_parts)
@@ -746,8 +859,11 @@ def main():
                                     full_html_content,
                                     'docx',
                                     format='html',
-                                    outputfile=output_filename,  # **CRUCIAL FIX**: Write to a file path
-                                    extra_args=[f'--resource-path={temp_dir}'] # Tell Pandoc where to find images
+                                    outputfile=output_filename,
+                                    extra_args=[
+                                        f'--resource-path={temp_dir}',
+                                        '--reference-doc=template.docx'  # Optional: use a template for better formatting
+                                    ]
                                 )
                                 
                                 # Read the generated file's bytes into memory for the download button
@@ -759,6 +875,8 @@ def main():
                             
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Please ensure Pandoc is installed correctly on your system. Error: {e}")
+                                # Fallback: provide more detailed error information
+                                st.code(f"Error details: {str(e)}")
                         
                         st.rerun()
 
