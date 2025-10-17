@@ -553,81 +553,89 @@ def process_emails(email_source, source_type):
     st.success("✅ Processing complete! The database has been updated.")
 
 
-# <<< NEW HELPER FUNCTION >>>
-# <<< ADD THIS NEW RECURSIVE HELPER FUNCTION >>>
-def process_html_tag(tag, doc, table_parser):
+# <<< ADD THIS NEW RECURSIVE "WALKER" FUNCTION >>>
+def walk_and_build(element, doc, table_parser):
     """
-    Recursively processes a BeautifulSoup tag and its children, adding content to the docx object.
+    Recursively walks through HTML elements to build a Word document.
+    It processes "atomic" tags (like <p>, <img>) and traverses "container" tags (like <div>).
+    This prevents duplication and ensures all content is processed in order.
     """
-    # If the object is not a tag but just a string of text, add it as a paragraph.
-    if not hasattr(tag, 'name') or tag.name is None:
-        text = tag.string
-        if text and text.strip():
-            doc.add_paragraph(text.strip())
+    # If the element is just a text string or a comment, we ignore it.
+    # The parent tag (like <p>) is responsible for handling its own text.
+    if not hasattr(element, 'name') or element.name is None:
         return
 
-    # --- Process specific tags ---
-    try:
-        if tag.name == 'p':
-            # Add paragraph but also process any children like <b> or <i> tags inside it
-            p = doc.add_paragraph()
-            for child in tag.children:
-                if hasattr(child, 'name') and child.name == 'b':
-                     p.add_run(child.get_text()).bold = True
-                else:
-                     p.add_run(child.get_text())
-        elif tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-            level = int(tag.name[1])
-            doc.add_heading(tag.get_text(strip=True), level=level)
-        elif tag.name == 'ul':
-            for li in tag.find_all('li', recursive=False):
-                doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
-        elif tag.name == 'img':
-            img_src = tag.get('src')
+    # Define which tags are final content and which are just wrappers
+    ATOMIC_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'img', 'table']
+    IGNORED_TAGS = ['script', 'style', 'head'] # We don't want to process these
+
+    tag_name = element.name
+
+    if tag_name in IGNORED_TAGS:
+        return # Skip this tag and everything inside it
+
+    if tag_name in ATOMIC_TAGS:
+        # --- This is an ATOMIC tag. We process it and STOP going deeper. ---
+        if tag_name == 'p':
+            text = element.get_text(strip=True)
+            if text: # Don't add paragraphs that are just whitespace
+                doc.add_paragraph(text)
+        elif tag_name.startswith('h'):
+            doc.add_heading(element.get_text(strip=True), level=int(tag_name[1]))
+        elif tag_name == 'li':
+             doc.add_paragraph(element.get_text(strip=True), style='List Bullet')
+        elif tag_name == 'img':
+            img_src = element.get('src')
             if img_src and os.path.exists(img_src):
-                doc.add_picture(img_src)
-            else:
-                doc.add_paragraph(f"[Image not found: {img_src}]", style="Emphasis")
-        elif tag.name == 'table':
-            # Use the specialized parser for the whole table at once
-            table_parser.add_html_to_document(str(tag), doc)
-        else:
-            # --- This is the recursive step ---
-            # If the tag is a generic container (like div, body, span),
-            # process each of its children by calling this same function.
-            if hasattr(tag, 'contents'):
-                for child in tag.contents:
-                    process_html_tag(child, doc, table_parser)
+                try:
+                    doc.add_picture(img_src)
+                except Exception as e:
+                    doc.add_paragraph(f"[Failed to render image: {os.path.basename(img_src)}. Error: {e}]", style="Emphasis")
+        elif tag_name == 'table':
+            try:
+                # Use the dedicated parser for the complex table structure
+                table_parser.add_html_to_document(str(element), doc)
+            except Exception:
+                # If the table is malformed, fall back to extracting its text
+                doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
+                for row in element.find_all('tr'):
+                    cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
+                    doc.add_paragraph(" | ".join(cells))
+    else:
+        # --- This is a CONTAINER tag (div, span, body, etc.). ---
+        # We don't add it directly, but we must process its children.
+        for child in element.children:
+            walk_and_build(child, doc, table_parser)
 
-    except Exception:
-        # If any specific table fails, fallback to text extraction for that table
-        if tag.name == 'table':
-            doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
-            for row in tag.find_all('tr'):
-                row_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
-                doc.add_paragraph(" | ".join(row_texts))
-
-# <<< ADD THIS REVISED MAIN BUILD FUNCTION >>>
+# <<< ADD THIS NEW ORCHESTRATOR FUNCTION >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     """
-    Cleans the HTML and initiates the recursive processing of the HTML tags.
+    Orchestrator function that cleans the HTML and starts the recursive walk.
     """
     if not html_string:
         return
 
-    # This function is still needed to clean boilerplate and save images to disk
+    # 1. Clean the HTML and, crucially, save all images to the temp folder
+    #    while rewriting their 'src' attributes to point to the local files.
     cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
     if not cleaned_html:
+        doc.add_paragraph("[Email content was empty after cleaning.]", style="Emphasis")
         return
 
     soup = BeautifulSoup(cleaned_html, 'html.parser')
+    
+    # Find the main content block of the email
     main_content = soup.find('div', class_='WordSection1') or soup.body
-
+    
     if main_content:
-        # A single parser instance for handling tables is efficient
+        # We only need one parser instance to handle all tables
         table_parser = HtmlToDocx()
-        # Kick off the recursive processing starting with the main content block
-        process_html_tag(main_content, doc, table_parser)
+        # 2. Start the recursive walk
+        walk_and_build(main_content, doc, table_parser)
+    else:
+        doc.add_paragraph("[Could not find main content block in the email.]", style="Emphasis")
+
+
 
 # --- AZURE SAS URL HELPER ---
 def generate_sas_url(container_name, blob_name):
