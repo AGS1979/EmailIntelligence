@@ -19,7 +19,6 @@ from sqlalchemy import create_engine, text
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 import docx
 from bs4 import BeautifulSoup
-from htmldocx import HtmlToDocx
 import unicodedata
 
 # --- PAGE CONFIGURATION ---
@@ -555,6 +554,7 @@ def process_emails(email_source, source_type):
 
 
 # <<< NEW HELPER FUNCTION 1: THE RECURSIVE WALKER >>>
+# <<< NEW HELPER FUNCTION 1: THE RECURSIVE WALKER >>>
 def walk_and_build(element, doc):
     """
     THIS IS THE FINAL, ROBUST FIX.
@@ -572,8 +572,7 @@ def walk_and_build(element, doc):
     if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
         text = element.get_text(strip=True)
         if text:
-            # Sanitize text to remove invalid XML characters
-            clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0]!="C")
+            clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
             if tag_name.startswith('h'):
                 doc.add_heading(clean_text, level=int(tag_name[1]))
             else:
@@ -583,7 +582,7 @@ def walk_and_build(element, doc):
         for li in element.find_all('li', recursive=False):
             text = li.get_text(strip=True)
             if text:
-                clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0]!="C")
+                clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
                 doc.add_paragraph(clean_text, style='List Bullet')
 
     elif tag_name == 'img':
@@ -616,7 +615,7 @@ def walk_and_build(element, doc):
                 for i, cell in enumerate(html_cells):
                     if i < num_cols:
                         cell_text = cell.get_text(strip=True)
-                        clean_text = "".join(ch for ch in cell_text if unicodedata.category(ch)[0]!="C")
+                        clean_text = "".join(ch for ch in cell_text if unicodedata.category(ch)[0] != "C")
                         docx_row_cells[i].text = clean_text
         except Exception as e:
             doc.add_paragraph(f"[ERROR: Could not manually build table. Extracting as raw text. Details: {e}]")
@@ -627,11 +626,13 @@ def walk_and_build(element, doc):
         for child in element.children:
             walk_and_build(child, doc)
 
+# <<< NEW HELPER FUNCTION 2: THE ORCHESTRATOR >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     """
     Orchestrator: Cleans HTML (saving images) and then starts the robust recursive walk.
     """
     if not html_string:
+        doc.add_paragraph("[No HTML content provided.]")
         return
 
     try:
@@ -647,6 +648,7 @@ def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     main_content = soup.find('div', class_='WordSection1') or soup.body
 
     if main_content:
+        # Start the reliable recursive walk on the cleaned HTML.
         walk_and_build(main_content, doc)
 
 
