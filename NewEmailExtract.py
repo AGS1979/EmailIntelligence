@@ -1,3 +1,5 @@
+from PIL import Image, ImageChops
+import io
 import os
 import sqlite3
 import json
@@ -756,74 +758,119 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
     return str(main_content)
 
 
+def crop_image_whitespace(image_bytes: bytes) -> bytes:
+    """
+    Crops whitespace from an image using Pillow.
+    
+    Args:
+        image_bytes: The raw bytes of the image file.
+
+    Returns:
+        The raw bytes of the cropped image, or the original bytes on failure.
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Get the background color from the top-left pixel
+        bg = Image.new(image.mode, image.size, image.getpixel((0, 0)))
+
+        # Find the difference between the image and the solid background
+        diff = ImageChops.difference(image, bg)
+
+        # Get the bounding box of the non-background area
+        bbox = diff.getbbox()
+
+        if bbox:
+            # Crop the image to this bounding box, adding a 10-pixel padding
+            padding = 10 
+            cropped_bbox = (
+                max(0, bbox[0] - padding),
+                max(0, bbox[1] - padding),
+                min(image.width, bbox[2] + padding),
+                min(image.height, bbox[3] + padding)
+            )
+            cropped_image = image.crop(cropped_bbox)
+
+            # Save the cropped image to a new byte buffer
+            buffer = io.BytesIO()
+            image_format = image.format or 'PNG' # Use original format or default
+            cropped_image.save(buffer, format=image_format)
+            return buffer.getvalue()
+        else:
+            # No difference found, image is likely a solid color
+            return image_bytes
+    except Exception:
+        # If any error occurs, fallback to the original image to prevent crashes
+        return image_bytes
+
 def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
     """
-    Final improved version: Forcefully sets image width to 100% using attributes
-    that Pandoc respects, ensuring it scales down to fit the page.
+    Final version: Crops image whitespace with Pillow and then scales the result
+    to fit the Word document page.
     """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
-
-    # --- Extract the main content section ---
-    main_content = soup.find('div', class_='WordSection1')
-    if not main_content:
-        main_content = soup.body if soup.body else soup
+    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
     if not main_content:
         return ""
 
-    # --- Process all image tags for landscape compatibility ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
         
-        # === THE KEY FIX ===
-        # Remove any existing height, width, or style attributes that could conflict.
+        # Remove any conflicting style or size attributes from the HTML tag
         for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
             if img_tag.has_attr(attr):
                 del img_tag[attr]
         
-        # Force the image to scale to the container's width. Pandoc handles this attribute well.
+        # Force the image to scale to 100% of the available page width
         img_tag['width'] = "100%"
-        # Let the height adjust automatically to maintain the aspect ratio.
-        # We don't need to set height="auto" as browsers/word do this by default with width="100%".
+        
+        image_data = None
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
             try:
                 header, encoded = src.split(',', 1)
-                img_type = header.split(';')[0].split('/')[1]
-                img_data = base64.b64decode(encoded)
-                img_filename = f"{uuid.uuid4()}.{img_type}"
-                temp_img_path = os.path.join(temp_dir, img_filename)
-                with open(temp_img_path, "wb") as f:
-                    f.write(img_data)
-                img_tag['src'] = temp_img_path
+                image_data = base64.b64decode(encoded)
             except Exception as e:
-                st.warning(f"Could not process a Base64 image: {e}")
+                st.warning(f"Could not decode a Base64 image: {e}")
                 img_tag.decompose()
+                continue
 
         # --- Handle CID embedded images (from .msg file) ---
         elif src.startswith('cid:') and msg_file_path:
             try:
                 with Message(msg_file_path) as msg:
-                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
                     cid = src[4:]
+                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
                     if cid in cid_attachments:
-                        attachment = cid_attachments[cid]
-                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
-                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                        with open(temp_img_path, "wb") as f:
-                            f.write(attachment.data)
-                        img_tag['src'] = temp_img_path
+                        image_data = cid_attachments[cid].data
                     else:
                         img_tag.decompose()
+                        continue
             except Exception as e:
                 st.warning(f"Could not process CID image '{src}': {e}")
                 img_tag.decompose()
+                continue
+        
+        if image_data:
+            # === THE KEY FIX: CROP THE IMAGE DATA ===
+            cropped_data = crop_image_whitespace(image_data)
+            
+            # Save the (now cropped) image to a temp file
+            img_type = Image.open(io.BytesIO(cropped_data)).format.lower() or 'png'
+            img_filename = f"{uuid.uuid4()}.{img_type}"
+            temp_img_path = os.path.join(temp_dir, img_filename)
+            
+            with open(temp_img_path, "wb") as f:
+                f.write(cropped_data)
+                
+            img_tag['src'] = temp_img_path
 
     return str(main_content)
 
