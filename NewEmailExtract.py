@@ -558,99 +558,92 @@ def process_emails(email_source, source_type):
 
 def walk_and_build(element, container):
     """
-    FINAL CORRECTED VERSION.
-    Recursively walks through HTML elements and correctly adds content to a 
-    python-docx container (which can be the main document or a table cell).
-    This version avoids corruption by handling the context of the container.
+    FINAL, STABLE VERSION
+    Recursively walks through HTML elements to correctly build a docx object.
+    - Simplifies table creation to prevent nested boxes and corruption.
+    - Handles images, lists, and basic text formatting without repetition.
     """
-    # Check if the container is a table cell, which has different capabilities.
     is_cell = isinstance(container, docx.table._Cell)
 
-    # Case 1: The element is just a string of text.
-    if isinstance(element, NavigableString):
-        text = str(element).strip()
-        if text:
-            # Add text directly to the current paragraph in the container.
-            # Using runs preserves formatting within a single paragraph.
-            container.paragraphs[-1].add_run(text)
-        return
-
-    if not isinstance(element, Tag):
-        return
-
-    tag_name = element.name.lower() if element.name else ''
-
-    if tag_name in ['script', 'style', 'head', 'br']:
-        return # Ignore non-visible tags and line breaks.
-
-    # --- Handle block-level tags that create new paragraphs ---
-    if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']:
-        text = element.get_text(strip=True)
-        if not text:
-            # If the tag is empty, still add a paragraph for spacing, then return.
-            container.add_paragraph()
-            return
+    for child in element.children:
+        # Case 1: The child is just a string of text.
+        if isinstance(child, NavigableString):
+            text = str(child).strip()
+            if text:
+                # Add text to the last paragraph to keep text from the same block together.
+                if not container.paragraphs:
+                    container.add_paragraph(text)
+                else:
+                    # In a cell, add to the existing paragraph's text.
+                    if is_cell:
+                         container.paragraphs[-1].add_run(text)
+                    # In the main doc, create a new paragraph for loose text.
+                    else:
+                         container.add_paragraph(text)
         
-        # Add a new paragraph for this block element.
-        p = container.add_paragraph()
-        
-        if tag_name.startswith('h'):
-            # If inside a cell, Word doesn't support headings, so we bold the text.
-            if is_cell:
-                p.add_run(text).bold = True
-            # Otherwise, add a proper heading.
+        # Case 2: The child is an HTML tag.
+        elif isinstance(child, Tag):
+            tag_name = child.name.lower() if child.name else ''
+
+            if tag_name in ['script', 'style', 'head', 'br']:
+                continue
+
+            # --- Handle simple block tags (p, h*, div, li) ---
+            if tag_name in ['p', 'div', 'li'] or tag_name.startswith('h'):
+                text = child.get_text(strip=True)
+                if text:
+                    if tag_name.startswith('h'):
+                        # Can't add true headings in cells, so bold the text instead.
+                        p = container.add_paragraph()
+                        p.add_run(text).bold = True
+                    elif tag_name == 'li':
+                        container.add_paragraph(text, style='List Bullet')
+                    else: # Standard <p> or <div>
+                        container.add_paragraph(text)
+            
+            # --- Handle Image Tags with better diagnostics ---
+            elif tag_name == 'img':
+                img_src = child.get('src')
+                if img_src and os.path.exists(img_src):
+                    try:
+                        container.add_picture(img_src, width=Inches(6.0))
+                    except Exception as e:
+                        container.add_paragraph(f"[ERROR adding image: {e}]")
+                elif img_src:
+                    # Add a diagnostic note if the image file was not found on disk.
+                    container.add_paragraph(f"[Image not found at path: {img_src}]")
+
+            # --- Handle Table Tags (Simplified to prevent nesting) ---
+            elif tag_name == 'table':
+                # This check prevents trying to create a table inside another table's cell.
+                if is_cell:
+                    # Fallback for nested tables: just dump their text content.
+                    container.add_paragraph("[Nested Table Content]:\n" + child.get_text(strip=True, separator='\n'))
+                    continue
+
+                rows = child.find_all('tr', recursive=False)
+                if not rows: continue
+                
+                max_cols = max(len(r.find_all(['th', 'td'], recursive=False)) for r in rows) if rows else 0
+                if max_cols > 0:
+                    try:
+                        doc_table = container.add_table(rows=0, cols=max_cols)
+                        doc_table.style = 'Table Grid'
+                        for html_row in rows:
+                            docx_row_cells = doc_table.add_row().cells
+                            html_cells = html_row.find_all(['th', 'td'], recursive=False)
+                            for i, cell in enumerate(html_cells):
+                                if i < max_cols:
+                                    # CRUCIAL SIMPLIFICATION: Get all cell text and add it directly.
+                                    # This avoids recursion into cells, which prevents the nested boxes and corruption.
+                                    cell_text = cell.get_text(strip=True, separator='\n')
+                                    docx_row_cells[i].text = cell_text
+                    except Exception as e:
+                        container.add_paragraph(f"[ERROR building table: {e}]")
+            
+            # --- Fallback for other container tags (body, span, etc.) ---
             else:
-                try:
-                    level = int(tag_name[1])
-                    container.add_heading(text, level=min(level, 9))
-                    return # add_heading creates its own paragraph, so we stop here.
-                except (ValueError, IndexError):
-                    p.add_run(text).bold = True
-        elif tag_name == 'li':
-            p.text = text
-            p.style = 'List Bullet'
-        else: # This is a regular <p> tag
-            p.text = text
-
-    # --- Handle Images ---
-    elif tag_name == 'img':
-        img_src = element.get('src')
-        if img_src and os.path.exists(img_src):
-            try:
-                container.add_picture(img_src, width=Inches(6.0))
-            except Exception as e:
-                container.add_paragraph(f"[ERROR: Could not add image: {e}]")
-
-    # --- Handle Tables ---
-    elif tag_name == 'table':
-        rows = element.find_all('tr', recursive=False)
-        if not rows: return
-
-        max_cols = 0
-        for r in rows:
-            cells = r.find_all(['th', 'td'], recursive=False)
-            max_cols = max(max_cols, len(cells))
-        
-        if max_cols > 0:
-            try:
-                doc_table = container.add_table(rows=0, cols=max_cols)
-                doc_table.style = 'Table Grid'
-                for html_row in rows:
-                    docx_row_cells = doc_table.add_row().cells
-                    html_cells = html_row.find_all(['th', 'td'], recursive=False)
-                    for i, cell in enumerate(html_cells):
-                        if i < max_cols:
-                            # CRUCIAL FIX: For each cell, recursively call the function, 
-                            # passing the cell object as the new container.
-                            for content_element in cell.children:
-                                walk_and_build(content_element, docx_row_cells[i])
-            except Exception as e:
-                container.add_paragraph(f"[ERROR building table: {e}]")
-
-    # --- Handle other container tags (div, body, etc.) by recursing ---
-    else:
-        for child in element.children:
-            walk_and_build(child, container)
+                walk_and_build(child, container)
 
 # <<< NEW HELPER FUNCTION 2: THE ORCHESTRATOR >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
