@@ -653,9 +653,9 @@ def generate_sas_url(container_name, blob_name):
     except Exception:
         return None
 
-def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=None):
+def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=None):
     """
-    Fixed version that prevents image cutoff in Word documents
+    Final version that prevents image cutoff in Word documents
     """
     if not html_string:
         return ""
@@ -683,20 +683,10 @@ def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=Non
             img_tag.decompose()
             continue
         
-        # Remove any existing styles that might cause issues
-        if img_tag.has_attr('style'):
-            # Remove fixed widths and heights
-            style = img_tag['style']
-            style = re.sub(r'width\s*:\s*[^;]+;?', '', style)
-            style = re.sub(r'height\s*:\s*[^;]+;?', '', style)
-            style = re.sub(r'max-width\s*:\s*[^;]+;?', '', style)
-            img_tag['style'] = style
-        
-        # Remove width and height attributes
-        if img_tag.has_attr('width'):
-            del img_tag['width']
-        if img_tag.has_attr('height'):
-            del img_tag['height']
+        # Remove any problematic width/height attributes
+        for attr in ['width', 'height', 'style']:
+            if img_tag.has_attr(attr):
+                del img_tag[attr]
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
@@ -711,9 +701,6 @@ def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=Non
                     f.write(img_data)
                 
                 img_tag['src'] = temp_img_path
-                
-                # Add Word-compatible styling
-                img_tag['style'] = 'max-width: 6.5in; width: auto; height: auto;'
                 
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
@@ -734,9 +721,6 @@ def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=Non
                         with open(temp_img_path, "wb") as f:
                             f.write(attachment.data)
                         img_tag['src'] = temp_img_path
-                        
-                        # Add Word-compatible styling
-                        img_tag['style'] = 'max-width: 6.5in; width: auto; height: auto;'
                     else:
                         img_tag.decompose()
 
@@ -746,31 +730,10 @@ def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=Non
 
     # --- Fix table layouts to prevent cutoff ---
     for table in main_content.find_all('table'):
-        # Remove problematic attributes
-        for attr in ['width', 'height', 'cellpadding', 'cellspacing']:
+        # Remove problematic width attributes
+        for attr in ['width', 'style']:
             if table.has_attr(attr):
                 del table[attr]
-        
-        # Clean up table style
-        if table.has_attr('style'):
-            style = table['style']
-            # Remove fixed widths
-            style = re.sub(r'width\s*:\s*\d+px\s*;?', '', style)
-            style = re.sub(r'width\s*:\s*\d+%\s*;?', '', style)
-            style = re.sub(r'height\s*:\s*\d+px\s*;?', '', style)
-            table['style'] = style + '; max-width: 6.5in; width: auto;'
-        else:
-            table['style'] = 'max-width: 6.5in; width: auto;'
-
-    # Wrap content in a container for better control
-    wrapper = soup.new_tag('div')
-    wrapper['class'] = 'email-content'
-    wrapper['style'] = 'max-width: 6.5in; margin: 0 auto;'
-    
-    if main_content.contents:
-        wrapper.extend(main_content.contents)
-        main_content.clear()
-        main_content.append(wrapper)
 
     # Return the cleaned HTML as a string
     return str(main_content)
@@ -898,8 +861,7 @@ def main():
                     mime="application/octet-stream"
                 )
             
-                # --- IMPROVED WORD DOCUMENT GENERATION ---
-                # --- UPDATED WORD DOCUMENT GENERATION WITH FIXES ---
+                # --- FIXED WORD DOCUMENT GENERATION ---
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
@@ -907,18 +869,15 @@ def main():
                         with tempfile.TemporaryDirectory() as temp_dir:
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-                                # MORE ROBUST FIX: Add Word-compatible styling
+                                # Simple, Word-compatible styling
                                 '<style>',
-                                'body { margin: 0.5in; font-family: "Calibri", sans-serif; }',
-                                'img { max-width: 6.5in !important; width: auto !important; height: auto !important; }',
-                                'table { max-width: 6.5in !important; width: auto !important; }',
-                                '.email-container { margin-bottom: 40px; }',
+                                'body { margin: 1in; font-family: "Calibri", sans-serif; }',
+                                'img { max-width: 6.5in; height: auto; }',
+                                'table { max-width: 6.5in; }',
                                 '.email-divider { border-top: 3px solid #1e70bf; margin: 30px 0; padding: 15px; background: #f8fafc; text-align: center; }',
                                 '.email-header { background: #e8f0fe; padding: 15px; margin-bottom: 15px; border-left: 4px solid #1e70bf; }',
-                                '.content-wrapper { max-width: 6.5in; margin: 0 auto; }',
                                 '</style>',
                                 '</head><body>',
-                                '<div class="content-wrapper">',
                                 f"<h1>Filtered Email Intelligence Report</h1>",
                                 f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
                                 f"<p>Total Emails: {len(filtered_df)}</p>"
@@ -929,13 +888,12 @@ def main():
                                 df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
                             for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                # FIX 1: Add clear demarcation between emails
-                                if i > 0:  # Don't add divider before the first email
+                                # Clear demarcation between emails
+                                if i > 0:
                                     all_html_parts.append('<div class="email-divider">')
                                     all_html_parts.append(f'<h3 style="color: #1e70bf; margin: 0;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
                                     all_html_parts.append('</div>')
                                 
-                                all_html_parts.append('<div class="email-container">')
                                 all_html_parts.append('<div class="email-header">')
                                 all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                 all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
@@ -969,32 +927,28 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                # Use the improved HTML cleaning function that prevents image cutoff
-                                cleaned_html = parse_and_clean_html_for_docx_fixed(original_html, temp_dir, tmp_msg_path)
+                                # Use the fixed HTML cleaning function
+                                cleaned_html = parse_and_clean_html_for_docx_final(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
-                                all_html_parts.append('</div>')  # Close email-container
                                 
                                 # Add page break between emails
                                 if i < len(df_for_export) - 1:
                                     all_html_parts.append('<div style="page-break-before: always;"></div>')
 
-                            all_html_parts.append('</div></body></html>')  # Close content-wrapper and body
+                            all_html_parts.append('</body></html>')
                             full_html_content = "".join(all_html_parts)
 
                             try:
                                 # Define a path for the temporary output file inside the temp_dir
                                 output_filename = os.path.join(temp_dir, "output.docx")
                                 
-                                # Use Pandoc to convert the HTML string to a DOCX file on disk
+                                # FIXED: Remove the problematic --reference-doc parameter
                                 pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
                                     format='html',
                                     outputfile=output_filename,
-                                    extra_args=[
-                                        f'--resource-path={temp_dir}',
-                                        '--reference-doc=none'  # Explicitly don't use a template
-                                    ]
+                                    extra_args=[f'--resource-path={temp_dir}']
                                 )
                                 
                                 # Read the generated file's bytes into memory for the download button
@@ -1007,13 +961,6 @@ def main():
                             
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Error: {e}")
-                                # Provide more specific troubleshooting
-                                st.info("""
-                                **Troubleshooting:**
-                                - Ensure Pandoc is installed: `pandoc --version`
-                                - Try installing with: `apt-get install pandoc` or `brew install pandoc`
-                                - For Streamlit Cloud, add `pandoc` to your `packages.txt`
-                                """)
                                         
                         st.rerun()
 
