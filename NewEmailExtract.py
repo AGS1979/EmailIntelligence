@@ -553,6 +553,68 @@ def process_emails(email_source, source_type):
     st.success("✅ Processing complete! The database has been updated.")
 
 
+# <<< NEW HELPER FUNCTION >>>
+def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
+    """
+    Parses an HTML string element by element and adds content to a docx.Document.
+    This is more robust for complex/malformed email HTML.
+    """
+    if not html_string:
+        return
+
+    # First, use the existing cleaning function to prepare the HTML and save images
+    cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
+    soup = BeautifulSoup(cleaned_html, 'html.parser')
+
+    # Use a fresh parser only for tables, where it's most useful
+    table_parser = HtmlToDocx()
+
+    for tag in soup.find_all(True, recursive=False): # Iterate through top-level tags
+        try:
+            # --- Handle Headings ---
+            if tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                level = int(tag.name[1])
+                doc.add_heading(tag.get_text(strip=True), level=level)
+
+            # --- Handle Paragraphs and Divs with text ---
+            elif tag.name in ['p', 'div']:
+                doc.add_paragraph(tag.get_text())
+
+            # --- Handle Unordered Lists ---
+            elif tag.name == 'ul':
+                for li in tag.find_all('li'):
+                    doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
+
+            # --- Handle Images (which are already saved to temp_dir) ---
+            elif tag.name == 'img':
+                img_src = tag.get('src')
+                if img_src and os.path.exists(img_src):
+                    try:
+                        doc.add_picture(img_src)
+                    except Exception as e:
+                        doc.add_paragraph(f"[Could not render image: {os.path.basename(img_src)}. Error: {e}]", style="Emphasis")
+                else:
+                     doc.add_paragraph(f"[Image source not found: {img_src}]", style="Emphasis")
+
+            # --- Handle Tables with a robust fallback ---
+            elif tag.name == 'table':
+                try:
+                    # Attempt to convert just the table HTML
+                    table_parser.add_html_to_document(str(tag), doc)
+                except Exception:
+                    # FALLBACK: If conversion fails, extract text content
+                    doc.add_paragraph("[Table content below could not be formatted correctly, displaying as text:]", style="Emphasis")
+                    for row in tag.find_all('tr'):
+                        row_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
+                        doc.add_paragraph("\t|\t".join(row_texts))
+            
+            # Add a small space after elements for readability
+            doc.add_paragraph()
+
+        except Exception as e:
+            # Catch-all for any other unexpected errors during tag processing
+            doc.add_paragraph(f"[Error processing an element ('{tag.name}'): {e}]", style="Emphasis")
+
 # --- AZURE SAS URL HELPER ---
 def generate_sas_url(container_name, blob_name):
     if not blob_name or pd.isna(blob_name):
@@ -573,6 +635,7 @@ def generate_sas_url(container_name, blob_name):
         return None
 
 # --- MAIN UI ---
+# <<< FULLY REVISED main() FUNCTION >>>
 def main():
     st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
     
@@ -629,6 +692,7 @@ def main():
             # --- FILTER UI ---
             with st.container(border=True):
                 st.subheader("📊 Filter Your Data")
+                # ... (Filter UI code remains unchanged) ...
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     def get_options(column_name):
@@ -674,6 +738,7 @@ def main():
             st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
             if not filtered_df.empty:
+                # ... (SQLite download button code remains unchanged) ...
                 temp_db_name = "financial_emails_export_filtered.db"
                 if os.path.exists(temp_db_name):
                     os.remove(temp_db_name)
@@ -713,10 +778,7 @@ def main():
                         if 'processedat' in df_for_export.columns:
                             df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
                         
-                        # The parser is now instantiated INSIDE the loop
                         for i, (index, row) in enumerate(df_for_export.iterrows()):
-                            parser = HtmlToDocx() # <<< FIX: Create a new parser for each email
-
                             doc.add_page_break()
                             doc.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=1)
                             doc.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=2)
@@ -731,7 +793,6 @@ def main():
                             blob_name = row.get('blob_name')
                             tmp_msg_path = None
 
-                            # Re-process from .msg file if available to get images
                             if blob_name and pd.notna(blob_name):
                                 try:
                                     blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
@@ -740,29 +801,13 @@ def main():
                                     fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
                                     with os.fdopen(fd, 'wb') as tmp_file:
                                         tmp_file.write(msg_bytes)
-                                    
-                                    # Use the original HTML from the database row
-                                    cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
                                 
                                 except Exception as e:
-                                    st.warning(f"Could not re-process email to extract images: {blob_name}. Error: {e}")
-                                    # Fallback to cleaning the stored HTML without the .msg context
-                                    cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir)
+                                    st.warning(f"Could not retrieve original .msg file: {blob_name}. Error: {e}")
 
-                            else:
-                                # Process HTML for emails that weren't uploaded as .msg
-                                cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir)
-
-                            try:
-                                parser.add_html_to_document(cleaned_html, doc)
-                            except (IndexError, KeyError) as e:
-                                doc.add_paragraph(
-                                    f"[Content could not be rendered due to a complex or malformed table in the original email. Error: {e}]"
-                                )
-                            except Exception as e:
-                                doc.add_paragraph(
-                                    f"[An unexpected error occurred while rendering email content: {e}]"
-                                )
+                            # <<< CORE LOGIC CHANGE HERE >>>
+                            # Call the new robust function to build the document piece by piece
+                            build_doc_from_html(original_html, doc, temp_dir, tmp_msg_path)
 
                             word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
                         
@@ -809,10 +854,8 @@ def main():
     with nav_tab3:
         st.header("Manage Master Lists")
         st.info(f"This data is read from '{MASTER_DB_NAME}'. To update it, please use your external import script.")
-        # Displaying master company data
         st.subheader("Master Company List")
         st.dataframe(get_master_company_data(), use_container_width=True)
-        # Displaying master broker data
         st.subheader("Master Broker List")
         broker_names = get_master_broker_names()
         if broker_names:
