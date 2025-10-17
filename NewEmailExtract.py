@@ -554,78 +554,80 @@ def process_emails(email_source, source_type):
 
 
 # <<< NEW HELPER FUNCTION >>>
+# <<< ADD THIS NEW RECURSIVE HELPER FUNCTION >>>
+def process_html_tag(tag, doc, table_parser):
+    """
+    Recursively processes a BeautifulSoup tag and its children, adding content to the docx object.
+    """
+    # If the object is not a tag but just a string of text, add it as a paragraph.
+    if not hasattr(tag, 'name') or tag.name is None:
+        text = tag.string
+        if text and text.strip():
+            doc.add_paragraph(text.strip())
+        return
+
+    # --- Process specific tags ---
+    try:
+        if tag.name == 'p':
+            # Add paragraph but also process any children like <b> or <i> tags inside it
+            p = doc.add_paragraph()
+            for child in tag.children:
+                if hasattr(child, 'name') and child.name == 'b':
+                     p.add_run(child.get_text()).bold = True
+                else:
+                     p.add_run(child.get_text())
+        elif tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            level = int(tag.name[1])
+            doc.add_heading(tag.get_text(strip=True), level=level)
+        elif tag.name == 'ul':
+            for li in tag.find_all('li', recursive=False):
+                doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
+        elif tag.name == 'img':
+            img_src = tag.get('src')
+            if img_src and os.path.exists(img_src):
+                doc.add_picture(img_src)
+            else:
+                doc.add_paragraph(f"[Image not found: {img_src}]", style="Emphasis")
+        elif tag.name == 'table':
+            # Use the specialized parser for the whole table at once
+            table_parser.add_html_to_document(str(tag), doc)
+        else:
+            # --- This is the recursive step ---
+            # If the tag is a generic container (like div, body, span),
+            # process each of its children by calling this same function.
+            if hasattr(tag, 'contents'):
+                for child in tag.contents:
+                    process_html_tag(child, doc, table_parser)
+
+    except Exception:
+        # If any specific table fails, fallback to text extraction for that table
+        if tag.name == 'table':
+            doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
+            for row in tag.find_all('tr'):
+                row_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
+                doc.add_paragraph(" | ".join(row_texts))
+
+# <<< ADD THIS REVISED MAIN BUILD FUNCTION >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     """
-    Parses an HTML string element by element and adds content to a docx.Document.
-    This version correctly iterates through children of the main content block.
+    Cleans the HTML and initiates the recursive processing of the HTML tags.
     """
     if not html_string:
         return
 
-    # This function is still necessary to extract images to the temp folder
+    # This function is still needed to clean boilerplate and save images to disk
     cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
     if not cleaned_html:
         return
-        
+
     soup = BeautifulSoup(cleaned_html, 'html.parser')
-    
-    # 1. Isolate the main content of the email.
-    # Most email bodies are wrapped in a 'WordSection1' div or the body tag.
-    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
+    main_content = soup.find('div', class_='WordSection1') or soup.body
 
-    # We still need a parser, but only for converting individual tables
-    table_parser = HtmlToDocx()
-
-    # 2. Iterate through each top-level tag INSIDE the main content
-    for tag in main_content.find_all(recursive=False):
-        try:
-            # --- Handle Paragraphs ---
-            # We check if it has text to avoid adding empty lines for wrapper divs
-            if tag.name == 'p' and tag.get_text(strip=True):
-                doc.add_paragraph(tag.get_text())
-
-            # --- Handle Headings ---
-            elif tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                level = int(tag.name[1])
-                doc.add_heading(tag.get_text(strip=True), level=level)
-
-            # --- Handle Unordered Lists ---
-            elif tag.name == 'ul':
-                for li in tag.find_all('li'):
-                    doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
-
-            # --- Handle Images ---
-            # The 'src' has already been converted to a local file path
-            elif tag.name == 'img':
-                img_src = tag.get('src')
-                if img_src and os.path.exists(img_src):
-                    try:
-                        # Add a title/caption for the image if available
-                        alt_text = tag.get('alt', 'Image')
-                        if alt_text:
-                            doc.add_paragraph(f"Exhibit: {alt_text}", style="Caption")
-                        doc.add_picture(img_src)
-                    except Exception as e:
-                        doc.add_paragraph(f"[Could not render image: {os.path.basename(img_src)}. Error: {e}]", style="Emphasis")
-                else:
-                    # This handles cases where an image link is broken
-                    doc.add_paragraph(f"[Image source not found: {img_src}]", style="Emphasis")
-
-            # --- Handle Tables ---
-            elif tag.name == 'table':
-                try:
-                    # Use the parser to convert just the HTML of the table
-                    table_parser.add_html_to_document(str(tag), doc)
-                except Exception:
-                    # If the library fails, fallback to extracting text
-                    doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
-                    for row in tag.find_all('tr'):
-                        row_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
-                        doc.add_paragraph("\t|\t".join(row_texts))
-            
-        except Exception as e:
-            # General error catch for any malformed tag
-            doc.add_paragraph(f"[Error processing an element ('{tag.name}'): {e}]", style="Emphasis")
+    if main_content:
+        # A single parser instance for handling tables is efficient
+        table_parser = HtmlToDocx()
+        # Kick off the recursive processing starting with the main content block
+        process_html_tag(main_content, doc, table_parser)
 
 # --- AZURE SAS URL HELPER ---
 def generate_sas_url(container_name, blob_name):
