@@ -462,15 +462,16 @@ def process_emails(email_source, source_type):
                         # It's already a string or None, so use it as is
                         raw_html_body = html_body_content
                     
-                    # === NEW: Handle hexadecimal encoded HTML content ===
+                    # === Handle hexadecimal encoded HTML content ===
                     if raw_html_body and raw_html_body.startswith('\\x'):
                         try:
                             # Remove the '\\x' prefix and decode the hex string
                             hex_string = raw_html_body.replace('\\x', '')
                             decoded_bytes = bytes.fromhex(hex_string)
                             raw_html_body = decoded_bytes.decode('utf-8', errors='ignore')
+                            status_container.success(f"✅ Successfully decoded hexadecimal content for: {subject}")
                         except Exception as hex_decode_error:
-                            st.warning(f"Failed to decode hexadecimal HTML content: {hex_decode_error}")
+                            status_container.warning(f"Failed to decode hexadecimal content for {subject}: {hex_decode_error}")
                             # Fallback to plain text if hex decoding fails
                             raw_html_body = f"<pre>{plain_body}</pre>"
                     
@@ -513,7 +514,7 @@ def process_emails(email_source, source_type):
             report.setdefault('Sector', 'N/A')
             
             report['EmailSubject'] = subject
-            report['EmailContent'] = raw_html_body
+            report['EmailContent'] = raw_html_body  # This should now be properly decoded
             report['blob_name'] = blob_name
 
             company_to_find = report.get("Company", "N/A")
@@ -699,6 +700,24 @@ def main():
                                 all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')}</p><hr>")
                                 
                                 original_html = row.get('emailcontent', '<p>No content available.</p>')
+
+
+                                # === FIX: Handle hexadecimal encoded content from database ===
+                                if isinstance(original_html, str) and original_html.startswith('\\x'):
+                                    try:
+                                        # Remove the '\\x' prefix and decode the hex string
+                                        hex_string = original_html.replace('\\x', '')
+                                        decoded_bytes = bytes.fromhex(hex_string)
+                                        original_html = decoded_bytes.decode('utf-8', errors='ignore')
+                                        st.success(f"✅ Successfully decoded hexadecimal content for email {i+1}")
+                                    except Exception as hex_decode_error:
+                                        st.warning(f"Failed to decode hexadecimal content for email {i+1}: {hex_decode_error}")
+                                        # Fallback to showing the raw content
+                                        original_html = f"<pre>Hexadecimal content could not be decoded: {original_html[:500]}...</pre>"
+                                # === END OF FIX ===
+
+
+
                                 blob_name = row.get('blob_name')
                                 tmp_msg_path = None
                                 
