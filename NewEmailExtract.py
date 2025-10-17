@@ -758,8 +758,8 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
 
 def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
     """
-    Specialized version for landscape orientation that aggressively cleans all elements
-    to prevent image and table truncation in Word.
+    Final improved version: Forcefully sets image width to 100% using attributes
+    that Pandoc respects, ensuring it scales down to fit the page.
     """
     if not html_string:
         return ""
@@ -773,23 +773,23 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
     if not main_content:
         return ""
 
-    # === FIX: Loop through ALL elements and remove problematic attributes ===
-    # This is the most critical change. It ensures no parent element can
-    # enforce a fixed width on the responsive images.
-    for element in main_content.find_all(True): # The 'True' matches all tags
-        for attr in ['width', 'height', 'style', 'align', 'class']:
-            if element.has_attr(attr):
-                del element[attr]
-
-    # --- Now, process images and add back ONLY the styles we need ---
+    # --- Process all image tags for landscape compatibility ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
         
-        # Add back the essential responsive styling for images
-        img_tag['style'] = 'max-width: 100%; height: auto; display: block;'
+        # === THE KEY FIX ===
+        # Remove any existing height, width, or style attributes that could conflict.
+        for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
+            if img_tag.has_attr(attr):
+                del img_tag[attr]
+        
+        # Force the image to scale to the container's width. Pandoc handles this attribute well.
+        img_tag['width'] = "100%"
+        # Let the height adjust automatically to maintain the aspect ratio.
+        # We don't need to set height="auto" as browsers/word do this by default with width="100%".
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
@@ -799,10 +799,8 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                 img_data = base64.b64decode(encoded)
                 img_filename = f"{uuid.uuid4()}.{img_type}"
                 temp_img_path = os.path.join(temp_dir, img_filename)
-                
                 with open(temp_img_path, "wb") as f:
                     f.write(img_data)
-                
                 img_tag['src'] = temp_img_path
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
@@ -814,12 +812,10 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                 with Message(msg_file_path) as msg:
                     cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
                     cid = src[4:]
-                    
                     if cid in cid_attachments:
                         attachment = cid_attachments[cid]
                         safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
                         temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                        
                         with open(temp_img_path, "wb") as f:
                             f.write(attachment.data)
                         img_tag['src'] = temp_img_path
@@ -828,10 +824,6 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
             except Exception as e:
                 st.warning(f"Could not process CID image '{src}': {e}")
                 img_tag.decompose()
-
-    # --- Add back styling for tables ---
-    for table in main_content.find_all('table'):
-        table['style'] = 'width: 100%; border-collapse: collapse; table-layout: auto;'
 
     return str(main_content)
 
@@ -1046,7 +1038,7 @@ def main():
                             try:
                                 output_filename = os.path.join(temp_dir, "output.docx")
                                 
-                                # FIX: Use landscape-compatible pandoc arguments
+                                # FIX: Use smaller margins to maximize horizontal space for wide tables/images
                                 pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
@@ -1056,8 +1048,9 @@ def main():
                                         f'--resource-path={temp_dir}',
                                         '--wrap=none',
                                         '--standalone',
-                                        '-V', 'geometry:landscape',  # FIX: Force landscape
-                                        '-V', 'geometry:margin=0.5in'
+                                        '-V', 'geometry:landscape',
+                                        # CHANGE THIS LINE: Use smaller 0.25in margins instead of 0.5in
+                                        '-V', 'geometry:margin=0.25in' 
                                     ]
                                 )
                                 
@@ -1067,10 +1060,14 @@ def main():
                                 st.session_state['word_data'] = output_docx_bytes
                                 st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                                 st.success("✅ Word document generated successfully!")
-                            
+
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Error: {e}")
-                                                        
+                                # For debugging, you can write the problematic HTML to a file
+                                with open(os.path.join(temp_dir, "debug.html"), "w", encoding="utf-8") as f:
+                                    f.write(full_html_content)
+                                st.info("A 'debug.html' file has been saved in the temp directory for inspection.")
+
                             st.rerun()
 
                 if st.session_state.get('word_data'):
