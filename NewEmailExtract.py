@@ -557,62 +557,74 @@ def process_emails(email_source, source_type):
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
     """
     Parses an HTML string element by element and adds content to a docx.Document.
-    This is more robust for complex/malformed email HTML.
+    This version correctly iterates through children of the main content block.
     """
     if not html_string:
         return
 
-    # First, use the existing cleaning function to prepare the HTML and save images
+    # This function is still necessary to extract images to the temp folder
     cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
+    if not cleaned_html:
+        return
+        
     soup = BeautifulSoup(cleaned_html, 'html.parser')
+    
+    # 1. Isolate the main content of the email.
+    # Most email bodies are wrapped in a 'WordSection1' div or the body tag.
+    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
 
-    # Use a fresh parser only for tables, where it's most useful
+    # We still need a parser, but only for converting individual tables
     table_parser = HtmlToDocx()
 
-    for tag in soup.find_all(True, recursive=False): # Iterate through top-level tags
+    # 2. Iterate through each top-level tag INSIDE the main content
+    for tag in main_content.find_all(recursive=False):
         try:
+            # --- Handle Paragraphs ---
+            # We check if it has text to avoid adding empty lines for wrapper divs
+            if tag.name == 'p' and tag.get_text(strip=True):
+                doc.add_paragraph(tag.get_text())
+
             # --- Handle Headings ---
-            if tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            elif tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                 level = int(tag.name[1])
                 doc.add_heading(tag.get_text(strip=True), level=level)
-
-            # --- Handle Paragraphs and Divs with text ---
-            elif tag.name in ['p', 'div']:
-                doc.add_paragraph(tag.get_text())
 
             # --- Handle Unordered Lists ---
             elif tag.name == 'ul':
                 for li in tag.find_all('li'):
                     doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
 
-            # --- Handle Images (which are already saved to temp_dir) ---
+            # --- Handle Images ---
+            # The 'src' has already been converted to a local file path
             elif tag.name == 'img':
                 img_src = tag.get('src')
                 if img_src and os.path.exists(img_src):
                     try:
+                        # Add a title/caption for the image if available
+                        alt_text = tag.get('alt', 'Image')
+                        if alt_text:
+                            doc.add_paragraph(f"Exhibit: {alt_text}", style="Caption")
                         doc.add_picture(img_src)
                     except Exception as e:
                         doc.add_paragraph(f"[Could not render image: {os.path.basename(img_src)}. Error: {e}]", style="Emphasis")
                 else:
-                     doc.add_paragraph(f"[Image source not found: {img_src}]", style="Emphasis")
+                    # This handles cases where an image link is broken
+                    doc.add_paragraph(f"[Image source not found: {img_src}]", style="Emphasis")
 
-            # --- Handle Tables with a robust fallback ---
+            # --- Handle Tables ---
             elif tag.name == 'table':
                 try:
-                    # Attempt to convert just the table HTML
+                    # Use the parser to convert just the HTML of the table
                     table_parser.add_html_to_document(str(tag), doc)
                 except Exception:
-                    # FALLBACK: If conversion fails, extract text content
-                    doc.add_paragraph("[Table content below could not be formatted correctly, displaying as text:]", style="Emphasis")
+                    # If the library fails, fallback to extracting text
+                    doc.add_paragraph("[Table could not be formatted, displaying as text:]", style="Emphasis")
                     for row in tag.find_all('tr'):
                         row_texts = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
                         doc.add_paragraph("\t|\t".join(row_texts))
             
-            # Add a small space after elements for readability
-            doc.add_paragraph()
-
         except Exception as e:
-            # Catch-all for any other unexpected errors during tag processing
+            # General error catch for any malformed tag
             doc.add_paragraph(f"[Error processing an element ('{tag.name}'): {e}]", style="Emphasis")
 
 # --- AZURE SAS URL HELPER ---
