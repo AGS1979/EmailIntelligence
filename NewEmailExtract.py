@@ -46,73 +46,68 @@ st.markdown("""
         padding: 2.5rem 4rem; /* Increased padding */
     }
 
-    /* --- Header Container (Removed logo specific styles) --- */
     .header-container {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding-bottom: 1.5rem; /* More padding below title */
-        border-bottom: 1px solid #e0e0e0; /* Lighter border */
-        margin-bottom: 2.5rem; /* More space below header */
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 2.5rem;
     }
     
     .app-title {
-        font-size: 2.5em; /* Larger, bolder title */
+        font-size: 2.5em;
         font-weight: 700;
         color: #1a1a1a;
-        letter-spacing: -0.02em; /* Slightly tighter letter spacing */
+        letter-spacing: -0.02em;
     }
     
-    /* --- Buttons --- */
     .stButton>button {
         border-radius: 8px;
         border: 1px solid #d1d5db;
         background-color: #ffffff;
         color: #374151;
-        font-weight: 500; /* Slightly less bold */
+        font-weight: 500;
         transition: all 0.2s ease;
-        padding: 0.6rem 1.2rem; /* Increased padding */
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Subtle shadow */
+        padding: 0.6rem 1.2rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     
     .stButton>button:hover {
-        background-color: #f0f2f6; /* Lighter hover background */
+        background-color: #f0f2f6;
         border-color: #a0a4ac;
         color: #1a1a1a;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Slightly more pronounced shadow on hover */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    /* --- Buttons (Revised for higher specificity) --- */
     button[data-testid="stButton-primary"] {
-    background-color: #1e70bf !important; /* Professional blue */
-    color: white !important; /* White text */
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 0.6rem 1.2rem !important;
-    font-weight: 500 !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-    transition: all 0.2s ease !important;
+        background-color: #1e70bf !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 500 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        transition: all 0.2s ease !important;
     }
 
     button[data-testid="stButton-primary"]:hover {
-    background-color: #155a9b !important; /* Darker blue on hover */
-    color: white !important;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+        background-color: #155a9b !important;
+        color: white !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
     }
 
-    /* --- Containers and Cards --- */
-    .st-emotion-cache-16txtl3 { /* This targets st.container(border=True) */
-        padding: 2rem; /* Increased padding */
-        background-color: #ffffff; /* White background for containers */
+    .st-emotion-cache-16txtl3 {
+        padding: 2rem;
+        background-color: #ffffff;
         border-radius: 12px;
-        border: 1px solid #e0e0e0; /* Light grey border */
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Soft shadow for depth */
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         margin-bottom: 1.5rem;
     }
 
-    /* --- Headings --- */
     h1, h2, h3, h4, h5, h6 {
-        font-weight: 600; /* Consistent font-weight for headings */
+        font-weight: 600;
         color: #1a1a1a;
         margin-top: 1.5rem;
         margin-bottom: 0.8rem;
@@ -120,7 +115,6 @@ st.markdown("""
     h2 { font-size: 1.8em; }
     h3 { font-size: 1.3em; margin-top: 1.2rem; }
 
-    /* --- Input Fields --- */
     .stTextInput>div>div>input {
         border-radius: 8px;
         border: 1px solid #d1d5db;
@@ -129,20 +123,19 @@ st.markdown("""
         box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
     }
     .stTextInput>div>div>input:focus {
-        border-color: #1e70bf; /* Highlight focus with primary blue */
+        border-color: #1e70bf;
         box-shadow: 0 0 0 2px rgba(30, 112, 191, 0.2);
         outline: none;
     }
 
-    /* --- Tabs --- */
     .stTabs [data-baseweb="tab-list"] button {
-        background-color: #f8f8f8; /* Lighter background for inactive tabs */
-        color: #666666; /* Greyer text for inactive tabs */
+        background-color: #f8f8f8;
+        color: #666666;
         border-radius: 8px 8px 0 0;
         padding: 0.7rem 1.2rem;
         font-weight: 500;
         border: none;
-        margin-right: 5px; /* Space between tabs */
+        margin-right: 5px;
         transition: all 0.2s ease;
     }
     .stTabs [data-baseweb="tab-list"] button:hover {
@@ -150,16 +143,16 @@ st.markdown("""
         color: #333333;
     }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #ffffff; /* White background for active tab */
-        color: #1e70bf; /* Primary blue for active tab text */
-        border-bottom: 3px solid #1e70bf; /* Blue underline for active tab */
+        background-color: #ffffff;
+        color: #1e70bf;
+        border-bottom: 3px solid #1e70bf;
         font-weight: 600;
-        box-shadow: none; /* Remove shadow from active tab */
+        box-shadow: none;
     }
     .stTabs [data-baseweb="tab-panel"] {
         padding-top: 1.5rem;
         border-top: 1px solid #e0e0e0;
-        margin-top: -1px; /* Overlap border with active tab */
+        margin-top: -1px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -332,21 +325,21 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
         
     soup = BeautifulSoup(html_string, 'html.parser')
 
-    # --- 1. Remove known junk/boilerplate elements ---
+    # --- Remove known junk/boilerplate elements ---
     caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
     for element in caution_elements:
         parent_container = element.find_parent('table') or element.find_parent('div')
         if parent_container:
             parent_container.decompose()
 
-    # --- 2. Extract the main content section ---
+    # --- Extract the main content section ---
     main_content = soup.find('div', class_='WordSection1')
     if not main_content:
         main_content = soup.body if soup.body else soup
     if not main_content:
         return "" 
 
-    # --- 3. Process all image tags within the main content ---
+    # --- Process all image tags to create local file paths ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
@@ -370,7 +363,7 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
                 st.warning(f"Could not process a Base64 image: {e}")
                 img_tag.decompose()
 
-        # --- Handle CID embedded images (requires the .msg file) ---
+        # --- Handle CID embedded images (from .msg file) ---
         elif src.startswith('cid:') and msg_file_path:
             try:
                 with Message(msg_file_path) as msg:
@@ -392,7 +385,7 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
                 st.warning(f"Could not process CID image '{src}': {e}")
                 img_tag.decompose()
 
-    # --- 4. Return the cleaned HTML as a string ---
+    # Return the cleaned HTML as a string
     return str(main_content)
 
 def extract_info_with_chatgpt(subject, body, master_brokers):
@@ -652,12 +645,11 @@ def main():
                     mime="application/octet-stream"
                 )
             
-                # --- NEW, SIMPLIFIED WORD DOCUMENT GENERATION ---
+                # --- FINAL, STABLE WORD DOCUMENT GENERATION ---
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     with st.spinner("Generating Word document... This may take a moment."):
-                        # This TemporaryDirectory will be automatically cleaned up
                         with tempfile.TemporaryDirectory() as temp_dir:
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>',
@@ -670,10 +662,7 @@ def main():
                                 df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
                             for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                # Add a page break before each new email
                                 all_html_parts.append('<div style="page-break-before: always;"></div>')
-
-                                # Add email headers as HTML
                                 all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                 all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
                                 date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
@@ -683,7 +672,6 @@ def main():
                                 blob_name = row.get('blob_name')
                                 tmp_msg_path = None
                                 
-                                # If there's an original .msg file, retrieve it for image extraction
                                 if blob_name and pd.notna(blob_name):
                                     try:
                                         blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
@@ -694,27 +682,34 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                # This function is still vital. It extracts images from the .msg file,
-                                # saves them to temp_dir, and replaces 'cid:' links with local file paths.
                                 cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
 
                             all_html_parts.append('</body></html>')
                             full_html_content = "".join(all_html_parts)
 
-                            # Use Pandoc to convert the single, complete HTML string into a DOCX file
                             try:
-                                output_docx_bytes = pypandoc.convert_text(
+                                # Define a path for the temporary output file inside the temp_dir
+                                output_filename = os.path.join(temp_dir, "output.docx")
+                                
+                                # Use Pandoc to convert the HTML string to a DOCX file on disk
+                                pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
                                     format='html',
-                                    # This crucial argument tells Pandoc where to find the extracted image files
-                                    extra_args=[f'--resource-path={temp_dir}']
+                                    outputfile=output_filename,  # **CRUCIAL FIX**: Write to a file path
+                                    extra_args=[f'--resource-path={temp_dir}'] # Tell Pandoc where to find images
                                 )
+                                
+                                # Read the generated file's bytes into memory for the download button
+                                with open(output_filename, "rb") as f:
+                                    output_docx_bytes = f.read()
+
                                 st.session_state['word_data'] = output_docx_bytes
                                 st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                            
                             except Exception as e:
-                                st.error(f"Failed to generate Word document. Please ensure Pandoc is installed on your system. Error: {e}")
+                                st.error(f"Failed to generate Word document. Please ensure Pandoc is installed correctly on your system. Error: {e}")
                         
                         st.rerun()
 
