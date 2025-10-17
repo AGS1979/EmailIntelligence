@@ -755,6 +755,105 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
 
     return str(main_content)
 
+
+def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
+    """
+    Specialized version for landscape orientation to handle wide table images
+    """
+    if not html_string:
+        return ""
+        
+    soup = BeautifulSoup(html_string, 'html.parser')
+
+    # --- Remove known junk/boilerplate elements ---
+    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
+    for element in caution_elements:
+        parent_container = element.find_parent('table') or element.find_parent('div')
+        if parent_container:
+            parent_container.decompose()
+
+    # --- Extract the main content section ---
+    main_content = soup.find('div', class_='WordSection1')
+    if not main_content:
+        main_content = soup.body if soup.body else soup
+    if not main_content:
+        return ""
+
+    # --- Process all image tags for landscape compatibility ---
+    for img_tag in main_content.find_all('img'):
+        src = img_tag.get('src')
+        if not src:
+            img_tag.decompose()
+            continue
+        
+        # FIX: Remove ALL constraints and let images use full landscape width
+        for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
+            if img_tag.has_attr(attr):
+                del img_tag[attr]
+        
+        # FIX: Minimal styling for maximum width in landscape
+        img_tag['style'] = 'max-width: 100%; height: auto;'
+        
+        # --- Handle Base64 encoded images ---
+        if src.startswith('data:image'):
+            try:
+                header, encoded = src.split(',', 1)
+                img_type = header.split(';')[0].split('/')[1]
+                img_data = base64.b64decode(encoded)
+                img_filename = f"{uuid.uuid4()}.{img_type}"
+                temp_img_path = os.path.join(temp_dir, img_filename)
+                
+                with open(temp_img_path, "wb") as f:
+                    f.write(img_data)
+                
+                img_tag['src'] = temp_img_path
+                
+            except Exception as e:
+                st.warning(f"Could not process a Base64 image: {e}")
+                img_tag.decompose()
+
+        # --- Handle CID embedded images (from .msg file) ---
+        elif src.startswith('cid:') and msg_file_path:
+            try:
+                with Message(msg_file_path) as msg:
+                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
+                    cid = src[4:]
+                    
+                    if cid in cid_attachments:
+                        attachment = cid_attachments[cid]
+                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
+                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                        
+                        with open(temp_img_path, "wb") as f:
+                            f.write(attachment.data)
+                        img_tag['src'] = temp_img_path
+                    else:
+                        img_tag.decompose()
+
+            except Exception as e:
+                st.warning(f"Could not process CID image '{src}': {e}")
+                img_tag.decompose()
+
+    # --- Remove all table constraints for landscape ---
+    for table in main_content.find_all('table'):
+        for attr in ['width', 'style', 'border', 'cellpadding', 'cellspacing', 'class']:
+            if table.has_attr(attr):
+                del table[attr]
+
+    # FIX: Add landscape-compatible container
+    if main_content.find():
+        container_div = soup.new_tag('div')
+        container_div['style'] = 'width: 100%; max-width: 100%; margin: 0; padding: 0;'
+        
+        for element in list(main_content.contents):
+            container_div.append(element)
+        
+        main_content.clear()
+        main_content.append(container_div)
+
+    return str(main_content)
+
+
 # --- MAIN UI ---
 def main():
     st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
@@ -884,20 +983,22 @@ def main():
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     with st.spinner("Generating Word document... This may take a moment."):
                         with tempfile.TemporaryDirectory() as temp_dir:
+                            # Create HTML with landscape orientation support
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-                                # Enhanced Word-compatible styling for tables and images
+                                # Enhanced CSS for wide tables and landscape support
                                 '<style>',
-                                'body { margin: 0.5in; font-family: "Calibri", sans-serif; font-size: 11pt; line-height: 1.2; }',
-                                'img { max-width: 7in !important; height: auto !important; display: block !important; margin: 0 auto !important; page-break-inside: avoid; }',
-                                'table { width: 100% !important; max-width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; word-wrap: break-word; }',
-                                'td, th { border: 1px solid #ddd; padding: 4px; text-align: left; vertical-align: top; }',
-                                'div, p { max-width: 100%; overflow-wrap: break-word; margin: 0; padding: 0; }',
+                                '@page { margin: 0.5in; size: landscape; }',  # FIX: Force landscape for entire document
+                                'body { margin: 0.5in; font-family: "Calibri", sans-serif; font-size: 10pt; }',
+                                'img { max-width: 10in !important; height: auto !important; display: block !important; margin: 0 auto !important; page-break-inside: avoid; }',
+                                'table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; }',
+                                '.wide-container { width: 100%; overflow-x: visible; }',
                                 '.email-divider { border-top: 3px solid #1e70bf; margin: 20px 0; padding: 10px; background: #f8fafc; }',
                                 '.email-header { background: #e8f0fe; padding: 12px; margin-bottom: 12px; border-left: 4px solid #1e70bf; }',
-                                '@page { margin: 0.5in; }',
+                                '.landscape-section { width: 100%; max-width: 100%; }',
                                 '</style>',
                                 '</head><body>',
+                                '<div class="wide-container">',
                                 f"<h1>Filtered Email Intelligence Report</h1>",
                                 f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
                                 f"<p>Total Emails: {len(filtered_df)}</p>"
@@ -914,6 +1015,7 @@ def main():
                                     all_html_parts.append(f'<h3 style="color: #1e70bf; margin: 0;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
                                     all_html_parts.append('</div>')
                                 
+                                all_html_parts.append('<div class="landscape-section">')  # FIX: Wrap in landscape container
                                 all_html_parts.append('<div class="email-header">')
                                 all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                 all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
@@ -947,22 +1049,22 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                # Use the fixed HTML cleaning function
-                                cleaned_html = parse_and_clean_html_for_docx_final(original_html, temp_dir, tmp_msg_path)
+                                # Use the enhanced HTML cleaning function
+                                cleaned_html = parse_and_clean_html_for_docx_landscape(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
+                                all_html_parts.append('</div>')  # Close landscape-section
                                 
                                 # Add page break between emails
                                 if i < len(df_for_export) - 1:
                                     all_html_parts.append('<div style="page-break-before: always;"></div>')
 
-                            all_html_parts.append('</body></html>')
+                            all_html_parts.append('</div></body></html>')
                             full_html_content = "".join(all_html_parts)
 
                             try:
-                                # Define a path for the temporary output file inside the temp_dir
                                 output_filename = os.path.join(temp_dir, "output.docx")
                                 
-                                # Enhanced pypandoc arguments for better image handling
+                                # FIX: Use landscape-compatible pandoc arguments
                                 pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
@@ -972,26 +1074,22 @@ def main():
                                         f'--resource-path={temp_dir}',
                                         '--wrap=none',
                                         '--standalone',
-                                        '--self-contained',
-                                        '--extract-media=.',
-                                        # Add these for better image control
-                                        '--pdf-engine-opt=--enable-local-file-access',
+                                        '-V', 'geometry:landscape',  # FIX: Force landscape
                                         '-V', 'geometry:margin=0.5in'
                                     ]
                                 )
                                 
-                                # Read the generated file's bytes into memory for the download button
                                 with open(output_filename, "rb") as f:
                                     output_docx_bytes = f.read()
 
                                 st.session_state['word_data'] = output_docx_bytes
                                 st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                                 st.success("✅ Word document generated successfully!")
-
+                            
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Error: {e}")
-                                        
-                        st.rerun()
+                                                        
+                            st.rerun()
 
                 if st.session_state.get('word_data'):
                     st.download_button(
