@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import uuid
 import io
 import base64
+import pypandoc
 
 import streamlit as st
 import pandas as pd
@@ -20,7 +21,6 @@ from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPerm
 import docx
 from bs4 import BeautifulSoup
 import unicodedata
-import docx
 from docx.shared import Inches
 from bs4.element import Tag, NavigableString
 
@@ -161,42 +161,6 @@ st.markdown("""
         border-top: 1px solid #e0e0e0;
         margin-top: -1px; /* Overlap border with active tab */
     }
-
-    /* --- Sidebar Navigation --- */
-    .st-emotion-cache-vk3305 { /* Targets the radio button container */
-        border-radius: 12px;
-        padding: 1rem;
-        background-color: #f8f9fa; /* Light background for sidebar nav */
-        border: 1px solid #e0e0e0;
-    }
-    .st-emotion-cache-vk3305 .st-emotion-cache-j7qwjs { /* Individual radio button labels */
-        font-weight: 500;
-        color: #333333;
-        padding: 0.5rem 0.75rem;
-        margin: 0.2rem 0;
-        border-radius: 6px;
-        transition: background-color 0.2s ease;
-    }
-    .st-emotion-cache-vk3305 .st-emotion-cache-j7qwjs:hover {
-        background-color: #eef2f6; /* Hover effect for nav items */
-    }
-    .st-emotion-cache-vk3305 .st-emotion-cache-j7qwjs.st-emotion-cache-j7qwjs-selected { /* Selected radio button */
-        background-color: #e0f2fe; /* Light blue for selected */
-        color: #1e70bf; /* Primary blue text for selected */
-        font-weight: 600;
-    }
-
-    /* --- Streamlit Info/Success/Warning/Error messages --- */
-    .st-emotion-cache-1f87rhc.e1dfwjs21 { /* Targets st.info/success etc. */
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    /* Specific styles for info, success, warning for better visual consistency */
-    .st-emotion-cache-1f87rhc.e1dfwjs21:has(.stAlert.info) { background-color: #e0f2fe; border-color: #90cdf4; color: #ffffff; }
-    .st-emotion-cache-1f87rhc.e1dfwjs21:has(.stAlert.success) { background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; }
-    .st-emotion-cache-1f87rhc.e1dfwjs21:has(.stAlert.warning) { background-color: #fef3c7; border-color: #fbbf24; color: #9a3412; }
-    .st-emotion-cache-1f87rhc.e1dfwjs21:has(.stAlert.error) { background-color: #fee2e2; border-color: #ef4444; color: #991b1b; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -362,7 +326,6 @@ def scan_outlook_emails(user_id, token, sender_domain=None):
         st.error(f"Error fetching emails: {e}"); st.json(e.response.json())
         return None
 
-# NEW/MODIFIED: This function cleans the HTML before Word conversion
 def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
     if not html_string:
         return ""
@@ -370,27 +333,24 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
     soup = BeautifulSoup(html_string, 'html.parser')
 
     # --- 1. Remove known junk/boilerplate elements ---
-    # Find and remove the "CAUTION: This email..." warning, which is often in a table or div
     caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
     for element in caution_elements:
-        # Find the parent table or div and remove it
         parent_container = element.find_parent('table') or element.find_parent('div')
         if parent_container:
             parent_container.decompose()
 
     # --- 2. Extract the main content section ---
-    # Many Outlook emails wrap the main content in a div with this class
     main_content = soup.find('div', class_='WordSection1')
     if not main_content:
         main_content = soup.body if soup.body else soup
     if not main_content:
-        return "" # Return empty if no content can be found
+        return "" 
 
     # --- 3. Process all image tags within the main content ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
-            img_tag.decompose() # Remove image tags with no source
+            img_tag.decompose()
             continue
         
         # --- Handle Base64 encoded images ---
@@ -408,20 +368,17 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
                 img_tag['src'] = temp_img_path
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
-                img_tag.decompose() # Remove broken tag
+                img_tag.decompose()
 
         # --- Handle CID embedded images (requires the .msg file) ---
         elif src.startswith('cid:') and msg_file_path:
             try:
-                # Use a context manager to ensure the file is handled properly
                 with Message(msg_file_path) as msg:
-                    # Create a dictionary for quick lookups
                     cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
                     cid = src[4:]
                     
                     if cid in cid_attachments:
                         attachment = cid_attachments[cid]
-                        # Use a safe filename
                         safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
                         temp_img_path = os.path.join(temp_dir, safe_img_filename)
                         
@@ -429,7 +386,6 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
                             f.write(attachment.data)
                         img_tag['src'] = temp_img_path
                     else:
-                        # If CID not found, remove the broken image link
                         img_tag.decompose()
 
             except Exception as e:
@@ -438,7 +394,6 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
 
     # --- 4. Return the cleaned HTML as a string ---
     return str(main_content)
-
 
 def extract_info_with_chatgpt(subject, body, master_brokers):
     broker_list_str = ", ".join(master_brokers)
@@ -555,123 +510,6 @@ def process_emails(email_source, source_type):
     progress_bar.progress(1.0, text="Processing complete!")
     st.success("✅ Processing complete! The database has been updated.")
 
-
-def walk_and_build(element, container):
-    """
-    FINAL, STABLE VERSION
-    Recursively walks through HTML elements to correctly build a docx object.
-    - Simplifies table creation to prevent nested boxes and corruption.
-    - Handles images, lists, and basic text formatting without repetition.
-    """
-    is_cell = isinstance(container, docx.table._Cell)
-
-    for child in element.children:
-        # Case 1: The child is just a string of text.
-        if isinstance(child, NavigableString):
-            text = str(child).strip()
-            if text:
-                # Add text to the last paragraph to keep text from the same block together.
-                if not container.paragraphs:
-                    container.add_paragraph(text)
-                else:
-                    # In a cell, add to the existing paragraph's text.
-                    if is_cell:
-                         container.paragraphs[-1].add_run(text)
-                    # In the main doc, create a new paragraph for loose text.
-                    else:
-                         container.add_paragraph(text)
-        
-        # Case 2: The child is an HTML tag.
-        elif isinstance(child, Tag):
-            tag_name = child.name.lower() if child.name else ''
-
-            if tag_name in ['script', 'style', 'head', 'br']:
-                continue
-
-            # --- Handle simple block tags (p, h*, div, li) ---
-            if tag_name in ['p', 'div', 'li'] or tag_name.startswith('h'):
-                text = child.get_text(strip=True)
-                if text:
-                    if tag_name.startswith('h'):
-                        # Can't add true headings in cells, so bold the text instead.
-                        p = container.add_paragraph()
-                        p.add_run(text).bold = True
-                    elif tag_name == 'li':
-                        container.add_paragraph(text, style='List Bullet')
-                    else: # Standard <p> or <div>
-                        container.add_paragraph(text)
-            
-            # --- Handle Image Tags with better diagnostics ---
-            elif tag_name == 'img':
-                img_src = child.get('src')
-                if img_src and os.path.exists(img_src):
-                    try:
-                        container.add_picture(img_src, width=Inches(6.0))
-                    except Exception as e:
-                        container.add_paragraph(f"[ERROR adding image: {e}]")
-                elif img_src:
-                    # Add a diagnostic note if the image file was not found on disk.
-                    container.add_paragraph(f"[Image not found at path: {img_src}]")
-
-            # --- Handle Table Tags (Simplified to prevent nesting) ---
-            elif tag_name == 'table':
-                # This check prevents trying to create a table inside another table's cell.
-                if is_cell:
-                    # Fallback for nested tables: just dump their text content.
-                    container.add_paragraph("[Nested Table Content]:\n" + child.get_text(strip=True, separator='\n'))
-                    continue
-
-                rows = child.find_all('tr', recursive=False)
-                if not rows: continue
-                
-                max_cols = max(len(r.find_all(['th', 'td'], recursive=False)) for r in rows) if rows else 0
-                if max_cols > 0:
-                    try:
-                        doc_table = container.add_table(rows=0, cols=max_cols)
-                        doc_table.style = 'Table Grid'
-                        for html_row in rows:
-                            docx_row_cells = doc_table.add_row().cells
-                            html_cells = html_row.find_all(['th', 'td'], recursive=False)
-                            for i, cell in enumerate(html_cells):
-                                if i < max_cols:
-                                    # CRUCIAL SIMPLIFICATION: Get all cell text and add it directly.
-                                    # This avoids recursion into cells, which prevents the nested boxes and corruption.
-                                    cell_text = cell.get_text(strip=True, separator='\n')
-                                    docx_row_cells[i].text = cell_text
-                    except Exception as e:
-                        container.add_paragraph(f"[ERROR building table: {e}]")
-            
-            # --- Fallback for other container tags (body, span, etc.) ---
-            else:
-                walk_and_build(child, container)
-
-# <<< NEW HELPER FUNCTION 2: THE ORCHESTRATOR >>>
-def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
-    """
-    Orchestrator: Cleans HTML (saving images) and then starts the robust recursive walk.
-    """
-    if not html_string:
-        doc.add_paragraph("[No HTML content provided.]")
-        return
-
-    try:
-        cleaned_html = parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path)
-    except Exception as e:
-        doc.add_paragraph(f"[CRITICAL ERROR during HTML cleaning/image saving: {e}]")
-        return
-
-    if not cleaned_html:
-        return
-
-    soup = BeautifulSoup(cleaned_html, 'html.parser')
-    main_content = soup.find('div', class_='WordSection1') or soup.body
-
-    if main_content:
-        # Start the reliable recursive walk on the cleaned HTML.
-        walk_and_build(main_content, doc)
-
-
-
 # --- AZURE SAS URL HELPER ---
 def generate_sas_url(container_name, blob_name):
     if not blob_name or pd.isna(blob_name):
@@ -692,7 +530,6 @@ def generate_sas_url(container_name, blob_name):
         return None
 
 # --- MAIN UI ---
-# <<< FULLY REVISED main() FUNCTION >>>
 def main():
     st.markdown(f'<div class="header-container"><div class="app-title">Email Intelligence Extractor</div></div>', unsafe_allow_html=True)
     
@@ -749,7 +586,6 @@ def main():
             # --- FILTER UI ---
             with st.container(border=True):
                 st.subheader("📊 Filter Your Data")
-                # ... (Filter UI code remains unchanged) ...
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     def get_options(column_name):
@@ -782,9 +618,9 @@ def main():
                 filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
             if selected_content_types:
                 filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
-            if selected_fiscal_years:
+            if 'selected_fiscal_years' in locals() and selected_fiscal_years:
                 filtered_df = filtered_df[filtered_df['fiscalyear'].isin(selected_fiscal_years)]
-            if selected_fiscal_quarters:
+            if 'selected_fiscal_quarters' in locals() and selected_fiscal_quarters:
                 filtered_df = filtered_df[filtered_df['fiscalquarter'].isin(selected_fiscal_quarters)]
             if search_query:
                 filtered_df = filtered_df[
@@ -795,7 +631,6 @@ def main():
             st.info(f"Displaying **{len(filtered_df)}** of **{len(all_data_df)}** total entries.")
 
             if not filtered_df.empty:
-                # ... (SQLite download button code remains unchanged) ...
                 temp_db_name = "financial_emails_export_filtered.db"
                 if os.path.exists(temp_db_name):
                     os.remove(temp_db_name)
@@ -817,62 +652,70 @@ def main():
                     mime="application/octet-stream"
                 )
             
-            # --- MODIFIED: BULK EMAIL CONTENT DOWNLOAD (WORD DOC) ---
-            if not filtered_df.empty:
+                # --- NEW, SIMPLIFIED WORD DOCUMENT GENERATION ---
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
-                    
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        doc = docx.Document()
-                        doc.add_heading('Filtered Email Intelligence Report', 0)
-                        doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                        
-                        progress_text = "Generating Word document... Please wait."
-                        word_progress = st.progress(0, text=progress_text)
-                        
-                        df_for_export = filtered_df.copy()
-                        if 'processedat' in df_for_export.columns:
-                            df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
-                        
-                        for i, (index, row) in enumerate(df_for_export.iterrows()):
-                            doc.add_page_break()
-                            doc.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=1)
-                            doc.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=2)
-                            
-                            p = doc.add_paragraph()
-                            p.add_run('Date: ').bold = True
-                            p.add_run(f"{row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'} | ")
-                            p.add_run('Broker: ').bold = True
-                            p.add_run(f"{row.get('brokername', 'N/A')}")
-                            
-                            original_html = row.get('emailcontent', '<p>No content available.</p>')
-                            blob_name = row.get('blob_name')
-                            tmp_msg_path = None
+                    with st.spinner("Generating Word document... This may take a moment."):
+                        # This TemporaryDirectory will be automatically cleaned up
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            all_html_parts = [
+                                '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>',
+                                f"<h1>Filtered Email Intelligence Report</h1>",
+                                f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>"
+                            ]
 
-                            if blob_name and pd.notna(blob_name):
-                                try:
-                                    blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
-                                    msg_bytes = blob_client.download_blob().readall()
-                                    
-                                    fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
-                                    with os.fdopen(fd, 'wb') as tmp_file:
-                                        tmp_file.write(msg_bytes)
+                            df_for_export = filtered_df.copy()
+                            if 'processedat' in df_for_export.columns:
+                                df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
+
+                            for i, (index, row) in enumerate(df_for_export.iterrows()):
+                                # Add a page break before each new email
+                                all_html_parts.append('<div style="page-break-before: always;"></div>')
+
+                                # Add email headers as HTML
+                                all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
+                                all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
+                                date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
+                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')}</p><hr>")
                                 
-                                except Exception as e:
-                                    st.warning(f"Could not retrieve original .msg file: {blob_name}. Error: {e}")
+                                original_html = row.get('emailcontent', '<p>No content available.</p>')
+                                blob_name = row.get('blob_name')
+                                tmp_msg_path = None
+                                
+                                # If there's an original .msg file, retrieve it for image extraction
+                                if blob_name and pd.notna(blob_name):
+                                    try:
+                                        blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
+                                        msg_bytes = blob_client.download_blob().readall()
+                                        fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
+                                        with os.fdopen(fd, 'wb') as tmp_file:
+                                            tmp_file.write(msg_bytes)
+                                    except Exception as e:
+                                        st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
+                                
+                                # This function is still vital. It extracts images from the .msg file,
+                                # saves them to temp_dir, and replaces 'cid:' links with local file paths.
+                                cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
+                                all_html_parts.append(cleaned_html)
 
-                            # <<< CORE LOGIC CHANGE HERE >>>
-                            # Call the new robust function to build the document piece by piece
-                            build_doc_from_html(original_html, doc, temp_dir, tmp_msg_path)
+                            all_html_parts.append('</body></html>')
+                            full_html_content = "".join(all_html_parts)
 
-                            word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
+                            # Use Pandoc to convert the single, complete HTML string into a DOCX file
+                            try:
+                                output_docx_bytes = pypandoc.convert_text(
+                                    full_html_content,
+                                    'docx',
+                                    format='html',
+                                    # This crucial argument tells Pandoc where to find the extracted image files
+                                    extra_args=[f'--resource-path={temp_dir}']
+                                )
+                                st.session_state['word_data'] = output_docx_bytes
+                                st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                            except Exception as e:
+                                st.error(f"Failed to generate Word document. Please ensure Pandoc is installed on your system. Error: {e}")
                         
-                        word_progress.empty()
-                        doc_buffer = io.BytesIO()
-                        doc.save(doc_buffer)
-                        st.session_state['word_data'] = doc_buffer.getvalue()
-                        st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                         st.rerun()
 
                 if st.session_state.get('word_data'):
