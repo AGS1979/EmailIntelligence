@@ -447,7 +447,24 @@ def process_emails(email_source, source_type):
                 with Message(tmp.name) as msg:
                     subject = msg.subject
                     plain_body = msg.body
-                    raw_html_body = msg.htmlBody or f"<pre>{plain_body}</pre>"
+                    
+                    # === START OF FIX ===
+                    html_body_content = msg.htmlBody
+                    if isinstance(html_body_content, bytes):
+                        try:
+                            # Attempt to decode the byte string, UTF-8 is most common
+                            raw_html_body = html_body_content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            # If UTF-8 fails, fallback to a more lenient encoding like latin-1
+                            raw_html_body = html_body_content.decode('latin-1', errors='ignore')
+                    else:
+                        # It's already a string or None, so use it as is
+                        raw_html_body = html_body_content
+                    
+                    # Fallback to plain text if HTML body is still not available after decoding attempts
+                    if not raw_html_body:
+                         raw_html_body = f"<pre>{plain_body}</pre>"
+                    # === END OF FIX ===
 
                 os.unlink(tmp.name)
             
