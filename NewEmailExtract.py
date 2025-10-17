@@ -556,90 +556,101 @@ def process_emails(email_source, source_type):
     st.success("✅ Processing complete! The database has been updated.")
 
 
-def walk_and_build(element, doc):
+def walk_and_build(element, container):
     """
-    CORRECTED VERSION 2.0
-    Recursively walks through HTML elements to correctly build the docx object.
-    - Fixes text duplication by processing each node (tag or text) only once.
-    - Manually builds tables to preserve formatting without corruption.
-    - Renders images that were previously saved to the temp directory.
+    FINAL CORRECTED VERSION.
+    Recursively walks through HTML elements and correctly adds content to a 
+    python-docx container (which can be the main document or a table cell).
+    This version avoids corruption by handling the context of the container.
     """
-    if element is None:
+    # Check if the container is a table cell, which has different capabilities.
+    is_cell = isinstance(container, docx.table._Cell)
+
+    # Case 1: The element is just a string of text.
+    if isinstance(element, NavigableString):
+        text = str(element).strip()
+        if text:
+            # Add text directly to the current paragraph in the container.
+            # Using runs preserves formatting within a single paragraph.
+            container.paragraphs[-1].add_run(text)
         return
 
-    # Iterate through the direct children of the current element to prevent repetition
-    for child in element.children:
-        # If the child is a simple text string, add it as a paragraph.
-        if isinstance(child, NavigableString):
-            text = child.strip()
-            if text:
-                clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
-                if clean_text:
-                    doc.add_paragraph(clean_text)
+    if not isinstance(element, Tag):
+        return
 
-        # If the child is a tag, process it based on its type.
-        elif isinstance(child, Tag):
-            tag_name = child.name.lower()
+    tag_name = element.name.lower() if element.name else ''
 
-            if tag_name in ['script', 'style', 'head']:
-                continue
+    if tag_name in ['script', 'style', 'head', 'br']:
+        return # Ignore non-visible tags and line breaks.
 
-            # Handle text, headings, and list items
-            if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']:
-                text = child.get_text(strip=True)
-                if text:
-                    clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
-                    if tag_name.startswith('h'):
-                        try:
-                            level = int(tag_name[1])
-                            doc.add_heading(clean_text, level=level if 1 <= level <= 9 else 1)
-                        except (ValueError, IndexError):
-                             doc.add_paragraph(clean_text)
-                    elif tag_name == 'li':
-                         doc.add_paragraph(clean_text, style='List Bullet')
-                    else:
-                        doc.add_paragraph(clean_text)
-
-            # Handle images
-            elif tag_name == 'img':
-                img_src = child.get('src')
-                if img_src and os.path.exists(img_src):
-                    try:
-                        doc.add_picture(img_src, width=Inches(6.0)) # Set a max width for consistency
-                    except Exception as e:
-                        doc.add_paragraph(f"[ERROR: Could not add image {os.path.basename(img_src)}: {e}]")
-
-            # Handle tables by manually building them
-            elif tag_name == 'table':
-                try:
-                    rows = child.find_all('tr')
-                    if not rows:
-                        walk_and_build(child, doc) # Process content inside a table tag with no rows
-                        continue
-
-                    num_cols = max(len(r.find_all(['th', 'td'])) for r in rows) if rows else 0
-                    if num_cols == 0:
-                        continue
-
-                    docx_table = doc.add_table(rows=0, cols=num_cols)
-                    docx_table.style = 'Table Grid'
-
-                    for html_row in rows:
-                        docx_row_cells = docx_table.add_row().cells
-                        html_cells = html_row.find_all(['th', 'td'])
-                        for i, cell in enumerate(html_cells):
-                            if i < num_cols:
-                                # Recursively process the content of each cell
-                                for cell_child in cell.children:
-                                    walk_and_build(cell_child, docx_row_cells[i])
-
-                except Exception as e:
-                    doc.add_paragraph(f"[ERROR: Failed to build table, dumping as text. Details: {e}]")
-                    doc.add_paragraph(child.get_text(strip=True))
-
-            # For any other container tag (div, span, body, etc.), recurse into its children
+    # --- Handle block-level tags that create new paragraphs ---
+    if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']:
+        text = element.get_text(strip=True)
+        if not text:
+            # If the tag is empty, still add a paragraph for spacing, then return.
+            container.add_paragraph()
+            return
+        
+        # Add a new paragraph for this block element.
+        p = container.add_paragraph()
+        
+        if tag_name.startswith('h'):
+            # If inside a cell, Word doesn't support headings, so we bold the text.
+            if is_cell:
+                p.add_run(text).bold = True
+            # Otherwise, add a proper heading.
             else:
-                walk_and_build(child, doc)
+                try:
+                    level = int(tag_name[1])
+                    container.add_heading(text, level=min(level, 9))
+                    return # add_heading creates its own paragraph, so we stop here.
+                except (ValueError, IndexError):
+                    p.add_run(text).bold = True
+        elif tag_name == 'li':
+            p.text = text
+            p.style = 'List Bullet'
+        else: # This is a regular <p> tag
+            p.text = text
+
+    # --- Handle Images ---
+    elif tag_name == 'img':
+        img_src = element.get('src')
+        if img_src and os.path.exists(img_src):
+            try:
+                container.add_picture(img_src, width=Inches(6.0))
+            except Exception as e:
+                container.add_paragraph(f"[ERROR: Could not add image: {e}]")
+
+    # --- Handle Tables ---
+    elif tag_name == 'table':
+        rows = element.find_all('tr', recursive=False)
+        if not rows: return
+
+        max_cols = 0
+        for r in rows:
+            cells = r.find_all(['th', 'td'], recursive=False)
+            max_cols = max(max_cols, len(cells))
+        
+        if max_cols > 0:
+            try:
+                doc_table = container.add_table(rows=0, cols=max_cols)
+                doc_table.style = 'Table Grid'
+                for html_row in rows:
+                    docx_row_cells = doc_table.add_row().cells
+                    html_cells = html_row.find_all(['th', 'td'], recursive=False)
+                    for i, cell in enumerate(html_cells):
+                        if i < max_cols:
+                            # CRUCIAL FIX: For each cell, recursively call the function, 
+                            # passing the cell object as the new container.
+                            for content_element in cell.children:
+                                walk_and_build(content_element, docx_row_cells[i])
+            except Exception as e:
+                container.add_paragraph(f"[ERROR building table: {e}]")
+
+    # --- Handle other container tags (div, body, etc.) by recursing ---
+    else:
+        for child in element.children:
+            walk_and_build(child, container)
 
 # <<< NEW HELPER FUNCTION 2: THE ORCHESTRATOR >>>
 def build_doc_from_html(html_string, doc, temp_dir, msg_file_path=None):
