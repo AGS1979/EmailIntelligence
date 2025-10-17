@@ -448,8 +448,9 @@ def process_emails(email_source, source_type):
                     subject = msg.subject
                     plain_body = msg.body
                     
-                    # === START OF FIX ===
+                    # === IMPROVED HTML BODY PROCESSING ===
                     html_body_content = msg.htmlBody
+                    
                     if isinstance(html_body_content, bytes):
                         try:
                             # Attempt to decode the byte string, UTF-8 is most common
@@ -461,7 +462,19 @@ def process_emails(email_source, source_type):
                         # It's already a string or None, so use it as is
                         raw_html_body = html_body_content
                     
-                    # Fallback to plain text if HTML body is still not available after decoding attempts
+                    # === NEW: Handle hexadecimal encoded HTML content ===
+                    if raw_html_body and raw_html_body.startswith('\\x'):
+                        try:
+                            # Remove the '\\x' prefix and decode the hex string
+                            hex_string = raw_html_body.replace('\\x', '')
+                            decoded_bytes = bytes.fromhex(hex_string)
+                            raw_html_body = decoded_bytes.decode('utf-8', errors='ignore')
+                        except Exception as hex_decode_error:
+                            st.warning(f"Failed to decode hexadecimal HTML content: {hex_decode_error}")
+                            # Fallback to plain text if hex decoding fails
+                            raw_html_body = f"<pre>{plain_body}</pre>"
+                    
+                    # Final fallback to plain text if HTML body is still not available
                     if not raw_html_body:
                          raw_html_body = f"<pre>{plain_body}</pre>"
                     # === END OF FIX ===
