@@ -653,10 +653,9 @@ def generate_sas_url(container_name, blob_name):
     except Exception:
         return None
 
-# --- IMPROVED HTML CLEANING FOR DOCX CONVERSION ---
-def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=None):
+def parse_and_clean_html_for_docx_fixed(html_string, temp_dir, msg_file_path=None):
     """
-    Improved version that handles images and table layouts better for Word conversion
+    Fixed version that prevents image cutoff in Word documents
     """
     if not html_string:
         return ""
@@ -677,12 +676,27 @@ def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=
     if not main_content:
         return ""
 
-    # --- Process all image tags to create local file paths ---
+    # --- Process all image tags to prevent cutoff ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
+        
+        # Remove any existing styles that might cause issues
+        if img_tag.has_attr('style'):
+            # Remove fixed widths and heights
+            style = img_tag['style']
+            style = re.sub(r'width\s*:\s*[^;]+;?', '', style)
+            style = re.sub(r'height\s*:\s*[^;]+;?', '', style)
+            style = re.sub(r'max-width\s*:\s*[^;]+;?', '', style)
+            img_tag['style'] = style
+        
+        # Remove width and height attributes
+        if img_tag.has_attr('width'):
+            del img_tag['width']
+        if img_tag.has_attr('height'):
+            del img_tag['height']
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
@@ -698,8 +712,8 @@ def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=
                 
                 img_tag['src'] = temp_img_path
                 
-                # Add styling to prevent image cutoff
-                img_tag['style'] = 'max-width: 100%; height: auto;'
+                # Add Word-compatible styling
+                img_tag['style'] = 'max-width: 6.5in; width: auto; height: auto;'
                 
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
@@ -721,8 +735,8 @@ def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=
                             f.write(attachment.data)
                         img_tag['src'] = temp_img_path
                         
-                        # Add styling to prevent image cutoff
-                        img_tag['style'] = 'max-width: 100%; height: auto;'
+                        # Add Word-compatible styling
+                        img_tag['style'] = 'max-width: 6.5in; width: auto; height: auto;'
                     else:
                         img_tag.decompose()
 
@@ -732,30 +746,34 @@ def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=
 
     # --- Fix table layouts to prevent cutoff ---
     for table in main_content.find_all('table'):
-        # Remove fixed widths that might cause cutoff
-        if table.has_attr('width'):
-            del table['width']
+        # Remove problematic attributes
+        for attr in ['width', 'height', 'cellpadding', 'cellspacing']:
+            if table.has_attr(attr):
+                del table[attr]
+        
+        # Clean up table style
         if table.has_attr('style'):
-            # Remove fixed width from style and add responsive styling
             style = table['style']
+            # Remove fixed widths
             style = re.sub(r'width\s*:\s*\d+px\s*;?', '', style)
             style = re.sub(r'width\s*:\s*\d+%\s*;?', '', style)
-            table['style'] = style + '; width: 100%;'
+            style = re.sub(r'height\s*:\s*\d+px\s*;?', '', style)
+            table['style'] = style + '; max-width: 6.5in; width: auto;'
+        else:
+            table['style'] = 'max-width: 6.5in; width: auto;'
 
-    # --- Add responsive styling to prevent content cutoff ---
-    responsive_style = """
-    <style>
-        body { margin: 0; padding: 10px; font-family: Arial, sans-serif; }
-        table { width: 100% !important; border-collapse: collapse; }
-        img { max-width: 100% !important; height: auto !important; }
-        div, p, span { max-width: 100% !important; }
-        .email-container { border: 1px solid #ddd; margin: 15px 0; padding: 15px; background: #f9f9f9; }
-        .email-header { background: #e8e8e8; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-    </style>
-    """
+    # Wrap content in a container for better control
+    wrapper = soup.new_tag('div')
+    wrapper['class'] = 'email-content'
+    wrapper['style'] = 'max-width: 6.5in; margin: 0 auto;'
     
-    # Return the cleaned HTML with responsive styling
-    return responsive_style + str(main_content)
+    if main_content.contents:
+        wrapper.extend(main_content.contents)
+        main_content.clear()
+        main_content.append(wrapper)
+
+    # Return the cleaned HTML as a string
+    return str(main_content)
 
 # --- MAIN UI ---
 def main():
@@ -889,15 +907,18 @@ def main():
                         with tempfile.TemporaryDirectory() as temp_dir:
                             all_html_parts = [
                                 '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-                                # FIX 2: Add responsive styling to prevent image cutoff
+                                # MORE ROBUST FIX: Add Word-compatible styling
                                 '<style>',
-                                'img { max-width: 100% !important; height: auto !important; }',
-                                'table { width: 100% !important; }',
-                                'body { margin: 20px; font-family: Arial, sans-serif; }',
-                                '.email-divider { border-top: 3px solid #1e70bf; margin: 30px 0; padding: 10px; background: #f8fafc; }',
+                                'body { margin: 0.5in; font-family: "Calibri", sans-serif; }',
+                                'img { max-width: 6.5in !important; width: auto !important; height: auto !important; }',
+                                'table { max-width: 6.5in !important; width: auto !important; }',
+                                '.email-container { margin-bottom: 40px; }',
+                                '.email-divider { border-top: 3px solid #1e70bf; margin: 30px 0; padding: 15px; background: #f8fafc; text-align: center; }',
                                 '.email-header { background: #e8f0fe; padding: 15px; margin-bottom: 15px; border-left: 4px solid #1e70bf; }',
+                                '.content-wrapper { max-width: 6.5in; margin: 0 auto; }',
                                 '</style>',
                                 '</head><body>',
+                                '<div class="content-wrapper">',
                                 f"<h1>Filtered Email Intelligence Report</h1>",
                                 f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
                                 f"<p>Total Emails: {len(filtered_df)}</p>"
@@ -911,9 +932,10 @@ def main():
                                 # FIX 1: Add clear demarcation between emails
                                 if i > 0:  # Don't add divider before the first email
                                     all_html_parts.append('<div class="email-divider">')
-                                    all_html_parts.append(f'<h3 style="color: #1e70bf; text-align: center;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
+                                    all_html_parts.append(f'<h3 style="color: #1e70bf; margin: 0;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
                                     all_html_parts.append('</div>')
                                 
+                                all_html_parts.append('<div class="email-container">')
                                 all_html_parts.append('<div class="email-header">')
                                 all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                 all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
@@ -947,15 +969,16 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                # Use the updated HTML cleaning function that prevents image cutoff
-                                cleaned_html = parse_and_clean_html_for_docx_improved(original_html, temp_dir, tmp_msg_path)
+                                # Use the improved HTML cleaning function that prevents image cutoff
+                                cleaned_html = parse_and_clean_html_for_docx_fixed(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
+                                all_html_parts.append('</div>')  # Close email-container
                                 
                                 # Add page break between emails
                                 if i < len(df_for_export) - 1:
                                     all_html_parts.append('<div style="page-break-before: always;"></div>')
 
-                            all_html_parts.append('</body></html>')
+                            all_html_parts.append('</div></body></html>')  # Close content-wrapper and body
                             full_html_content = "".join(all_html_parts)
 
                             try:
@@ -968,7 +991,10 @@ def main():
                                     'docx',
                                     format='html',
                                     outputfile=output_filename,
-                                    extra_args=[f'--resource-path={temp_dir}'] # Tell Pandoc where to find images
+                                    extra_args=[
+                                        f'--resource-path={temp_dir}',
+                                        '--reference-doc=none'  # Explicitly don't use a template
+                                    ]
                                 )
                                 
                                 # Read the generated file's bytes into memory for the download button
@@ -980,7 +1006,14 @@ def main():
                                 st.success("✅ Word document generated successfully!")
                             
                             except Exception as e:
-                                st.error(f"Failed to generate Word document. Please ensure Pandoc is installed correctly on your system. Error: {e}")
+                                st.error(f"Failed to generate Word document. Error: {e}")
+                                # Provide more specific troubleshooting
+                                st.info("""
+                                **Troubleshooting:**
+                                - Ensure Pandoc is installed: `pandoc --version`
+                                - Try installing with: `apt-get install pandoc` or `brew install pandoc`
+                                - For Streamlit Cloud, add `pandoc` to your `packages.txt`
+                                """)
                                         
                         st.rerun()
 
