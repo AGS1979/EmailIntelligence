@@ -13,3 +13,5 @@ azure-storage-blob
 python-docx
 beautifulsoup4
 htmldocx
+pypandoc
+pypandoc-binary
