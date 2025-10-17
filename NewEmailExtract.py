@@ -553,76 +553,87 @@ def process_emails(email_source, source_type):
     st.success("✅ Processing complete! The database has been updated.")
 
 
-# <<< NEW HELPER FUNCTION 1: THE RECURSIVE WALKER >>>
-# <<< NEW HELPER FUNCTION 1: THE RECURSIVE WALKER >>>
 def walk_and_build(element, doc):
     """
-    THIS IS THE FINAL, ROBUST FIX.
-    Recursively walks through HTML elements and MANUALLY adds them to the docx object.
-    It completely avoids the htmldocx library, building tables from scratch.
+    Recursively walks through HTML elements and adds their content to the docx object.
+    This version uses a robust, text-based conversion for tables to prevent corruption.
     """
+    # A small helper to ensure all text is XML-compatible
+    def clean_xml_text(text):
+        if not text:
+            return ""
+        # Remove invalid XML characters (control characters except tab, newline, return)
+        return "".join(
+            ch for ch in text if ch == '\t' or ch == '\n' or ch == '\r' or \
+            (ch >= '\u0020' and ch <= '\uD7FF') or \
+            (ch >= '\uE000' and ch <= '\uFFFD') or \
+            (ch >= '\U00010000' and ch <= '\U0010FFFF')
+        )
+
     if not hasattr(element, 'name') or element.name is None:
         return
 
     tag_name = element.name
 
+    # Skip non-visible content
     if tag_name in ['script', 'style', 'head']:
         return
 
+    # Handle text-based elements
     if tag_name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
         text = element.get_text(strip=True)
         if text:
-            clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
+            clean_text = clean_xml_text(text)
             if tag_name.startswith('h'):
-                doc.add_heading(clean_text, level=int(tag_name[1]))
+                try:
+                    level = int(tag_name[1])
+                    doc.add_heading(clean_text, level=level)
+                except ValueError:
+                    doc.add_paragraph(clean_text) # Fallback for invalid heading tags like <h7>
             else:
                 doc.add_paragraph(clean_text)
 
+    # Handle lists
     elif tag_name == 'ul':
         for li in element.find_all('li', recursive=False):
             text = li.get_text(strip=True)
             if text:
-                clean_text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
-                doc.add_paragraph(clean_text, style='List Bullet')
+                doc.add_paragraph(clean_xml_text(text), style='List Bullet')
 
+    # Handle images
     elif tag_name == 'img':
         img_src = element.get('src')
         if img_src and os.path.exists(img_src):
             try:
-                doc.add_picture(img_src)
+                # Add pictures with a safe width to prevent them from being too large
+                doc.add_picture(img_src, width=docx.shared.Inches(6.5))
             except Exception as e:
                 doc.add_paragraph(f"[ERROR: Could not add image {os.path.basename(img_src)}: {e}]")
 
+    # --- ROBUST TABLE HANDLING ---
+    # This is the key change. We convert tables to text to avoid corruption.
     elif tag_name == 'table':
         try:
-            # --- FULLY MANUAL TABLE PARSING ---
+            table_lines = []
             rows = element.find_all('tr')
-            if not rows:
-                for child in element.children:
-                    walk_and_build(child, doc)
-                return
+            for row in rows:
+                cells = row.find_all(['th', 'td'])
+                # Get clean text from each cell and join with a separator
+                cell_texts = [clean_xml_text(c.get_text(strip=True)) for c in cells]
+                table_lines.append(" | ".join(cell_texts))
+            
+            # Add the processed table content to the document as plain text
+            if table_lines:
+                doc.add_paragraph("\n".join(table_lines))
 
-            num_cols = max(len(r.find_all(['th', 'td'])) for r in rows) if rows else 0
-            if num_cols == 0:
-                return
-
-            docx_table = doc.add_table(rows=0, cols=num_cols)
-            docx_table.style = 'Table Grid'
-
-            for html_row in rows:
-                docx_row_cells = docx_table.add_row().cells
-                html_cells = html_row.find_all(['th', 'td'])
-                for i, cell in enumerate(html_cells):
-                    if i < num_cols:
-                        cell_text = cell.get_text(strip=True)
-                        clean_text = "".join(ch for ch in cell_text if unicodedata.category(ch)[0] != "C")
-                        docx_row_cells[i].text = clean_text
         except Exception as e:
-            doc.add_paragraph(f"[ERROR: Could not manually build table. Extracting as raw text. Details: {e}]")
-            doc.add_paragraph(element.get_text())
+            # Fallback if even text extraction fails
+            doc.add_paragraph(f"[ERROR: Could not process table. Raw text below. Details: {e}]")
+            doc.add_paragraph(clean_xml_text(element.get_text()))
 
+    # --- RECURSIVE STEP ---
+    # For container tags like <div>, <span>, <tbody>, etc., process their children
     else:
-        # --- RECURSIVE STEP for container tags (div, span, etc.) ---
         for child in element.children:
             walk_and_build(child, doc)
 
