@@ -388,6 +388,106 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
     # Return the cleaned HTML as a string
     return str(main_content)
 
+def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=None):
+    """
+    Improved version that handles images and prevents cutoff in Word documents
+    """
+    if not html_string:
+        return ""
+        
+    soup = BeautifulSoup(html_string, 'html.parser')
+
+    # --- Remove known junk/boilerplate elements ---
+    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
+    for element in caution_elements:
+        parent_container = element.find_parent('table') or element.find_parent('div')
+        if parent_container:
+            parent_container.decompose()
+
+    # --- Extract the main content section ---
+    main_content = soup.find('div', class_='WordSection1')
+    if not main_content:
+        main_content = soup.body if soup.body else soup
+    if not main_content:
+        return ""
+
+    # --- Process all image tags to create local file paths ---
+    for img_tag in main_content.find_all('img'):
+        src = img_tag.get('src')
+        if not src:
+            img_tag.decompose()
+            continue
+        
+        # --- Handle Base64 encoded images ---
+        if src.startswith('data:image'):
+            try:
+                header, encoded = src.split(',', 1)
+                img_type = header.split(';')[0].split('/')[1]
+                img_data = base64.b64decode(encoded)
+                img_filename = f"{uuid.uuid4()}.{img_type}"
+                temp_img_path = os.path.join(temp_dir, img_filename)
+                
+                with open(temp_img_path, "wb") as f:
+                    f.write(img_data)
+                
+                img_tag['src'] = temp_img_path
+                
+                # FIX 2: Add styling to prevent image cutoff
+                if img_tag.get('style'):
+                    img_tag['style'] = img_tag['style'] + '; max-width: 100%; height: auto;'
+                else:
+                    img_tag['style'] = 'max-width: 100%; height: auto;'
+                
+            except Exception as e:
+                st.warning(f"Could not process a Base64 image: {e}")
+                img_tag.decompose()
+
+        # --- Handle CID embedded images (from .msg file) ---
+        elif src.startswith('cid:') and msg_file_path:
+            try:
+                with Message(msg_file_path) as msg:
+                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
+                    cid = src[4:]
+                    
+                    if cid in cid_attachments:
+                        attachment = cid_attachments[cid]
+                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
+                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                        
+                        with open(temp_img_path, "wb") as f:
+                            f.write(attachment.data)
+                        img_tag['src'] = temp_img_path
+                        
+                        # FIX 2: Add styling to prevent image cutoff
+                        if img_tag.get('style'):
+                            img_tag['style'] = img_tag['style'] + '; max-width: 100%; height: auto;'
+                        else:
+                            img_tag['style'] = 'max-width: 100%; height: auto;'
+                    else:
+                        img_tag.decompose()
+
+            except Exception as e:
+                st.warning(f"Could not process CID image '{src}': {e}")
+                img_tag.decompose()
+
+    # --- Fix table layouts to prevent cutoff ---
+    for table in main_content.find_all('table'):
+        # Remove fixed widths that might cause cutoff
+        if table.has_attr('width'):
+            del table['width']
+        if table.has_attr('style'):
+            # Remove fixed width from style and add responsive styling
+            style = table['style']
+            style = re.sub(r'width\s*:\s*\d+px\s*;?', '', style)
+            style = re.sub(r'width\s*:\s*\d+%\s*;?', '', style)
+            table['style'] = style + '; width: 100%;'
+        else:
+            table['style'] = 'width: 100%;'
+
+    # Return the cleaned HTML as a string
+    return str(main_content)
+
+
 def extract_info_with_chatgpt(subject, body, master_brokers):
     broker_list_str = ", ".join(master_brokers)
     
@@ -781,16 +881,26 @@ def main():
                 )
             
                 # --- IMPROVED WORD DOCUMENT GENERATION ---
+                # --- UPDATED WORD DOCUMENT GENERATION WITH FIXES ---
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     with st.spinner("Generating Word document... This may take a moment."):
                         with tempfile.TemporaryDirectory() as temp_dir:
                             all_html_parts = [
-                                '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>',
+                                '<!DOCTYPE html><html><head><meta charset="UTF-8">',
+                                # FIX 2: Add responsive styling to prevent image cutoff
+                                '<style>',
+                                'img { max-width: 100% !important; height: auto !important; }',
+                                'table { width: 100% !important; }',
+                                'body { margin: 20px; font-family: Arial, sans-serif; }',
+                                '.email-divider { border-top: 3px solid #1e70bf; margin: 30px 0; padding: 10px; background: #f8fafc; }',
+                                '.email-header { background: #e8f0fe; padding: 15px; margin-bottom: 15px; border-left: 4px solid #1e70bf; }',
+                                '</style>',
+                                '</head><body>',
                                 f"<h1>Filtered Email Intelligence Report</h1>",
                                 f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
-                                f"<p>Total Emails: {len(filtered_df)}</p><hr>"
+                                f"<p>Total Emails: {len(filtered_df)}</p>"
                             ]
 
                             df_for_export = filtered_df.copy()
@@ -798,17 +908,18 @@ def main():
                                 df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
                             for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                # --- CLEAR EMAIL DEMARCATION ---
-                                all_html_parts.append(f'<div class="email-container" style="border: 2px solid #1e70bf; margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 8px; page-break-inside: avoid;">')
-                                all_html_parts.append(f'<div class="email-header" style="background: #1e70bf; color: white; padding: 12px; margin: -20px -20px 15px -20px; border-radius: 6px 6px 0 0;">')
-                                all_html_parts.append(f'<h2 style="margin: 0; color: white;">Email {i+1} of {len(df_for_export)}</h2>')
-                                all_html_parts.append('</div>')
+                                # FIX 1: Add clear demarcation between emails
+                                if i > 0:  # Don't add divider before the first email
+                                    all_html_parts.append('<div class="email-divider">')
+                                    all_html_parts.append(f'<h3 style="color: #1e70bf; text-align: center;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
+                                    all_html_parts.append('</div>')
                                 
-                                all_html_parts.append(f"<h3>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h3>")
-                                all_html_parts.append(f"<h4>Subject: {row.get('emailsubject', 'No Subject')}</h4>")
+                                all_html_parts.append('<div class="email-header">')
+                                all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
+                                all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
                                 date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
                                 all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}</p>")
-                                all_html_parts.append(f"<p><b>Fiscal Period:</b> Q{row.get('fiscalquarter', 'N/A')} {row.get('fiscalyear', 'N/A')}</p><hr>")
+                                all_html_parts.append('</div>')
                                 
                                 original_html = row.get('emailcontent', '<p>No content available.</p>')
 
@@ -836,16 +947,13 @@ def main():
                                     except Exception as e:
                                         st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
                                 
-                                # Use the improved HTML cleaning function
+                                # Use the updated HTML cleaning function that prevents image cutoff
                                 cleaned_html = parse_and_clean_html_for_docx_improved(original_html, temp_dir, tmp_msg_path)
                                 all_html_parts.append(cleaned_html)
                                 
-                                # Close the email container
-                                all_html_parts.append('</div>')
-                                
-                                # Add page break between emails (except for the last one)
+                                # Add page break between emails
                                 if i < len(df_for_export) - 1:
-                                    all_html_parts.append('<div style="page-break-after: always;"></div>')
+                                    all_html_parts.append('<div style="page-break-before: always;"></div>')
 
                             all_html_parts.append('</body></html>')
                             full_html_content = "".join(all_html_parts)
@@ -860,10 +968,7 @@ def main():
                                     'docx',
                                     format='html',
                                     outputfile=output_filename,
-                                    extra_args=[
-                                        f'--resource-path={temp_dir}',
-                                        '--reference-doc=template.docx'  # Optional: use a template for better formatting
-                                    ]
+                                    extra_args=[f'--resource-path={temp_dir}'] # Tell Pandoc where to find images
                                 )
                                 
                                 # Read the generated file's bytes into memory for the download button
@@ -872,12 +977,11 @@ def main():
 
                                 st.session_state['word_data'] = output_docx_bytes
                                 st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                                st.success("✅ Word document generated successfully!")
                             
                             except Exception as e:
                                 st.error(f"Failed to generate Word document. Please ensure Pandoc is installed correctly on your system. Error: {e}")
-                                # Fallback: provide more detailed error information
-                                st.code(f"Error details: {str(e)}")
-                        
+                                        
                         st.rerun()
 
                 if st.session_state.get('word_data'):
