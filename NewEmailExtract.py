@@ -758,19 +758,13 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
 
 def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
     """
-    Specialized version for landscape orientation to handle wide table images
+    Specialized version for landscape orientation that aggressively cleans all elements
+    to prevent image and table truncation in Word.
     """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
-
-    # --- Remove known junk/boilerplate elements ---
-    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
-    for element in caution_elements:
-        parent_container = element.find_parent('table') or element.find_parent('div')
-        if parent_container:
-            parent_container.decompose()
 
     # --- Extract the main content section ---
     main_content = soup.find('div', class_='WordSection1')
@@ -779,20 +773,23 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
     if not main_content:
         return ""
 
-    # --- Process all image tags for landscape compatibility ---
+    # === FIX: Loop through ALL elements and remove problematic attributes ===
+    # This is the most critical change. It ensures no parent element can
+    # enforce a fixed width on the responsive images.
+    for element in main_content.find_all(True): # The 'True' matches all tags
+        for attr in ['width', 'height', 'style', 'align', 'class']:
+            if element.has_attr(attr):
+                del element[attr]
+
+    # --- Now, process images and add back ONLY the styles we need ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
         
-        # FIX: Remove ALL constraints and let images use full landscape width
-        for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
-            if img_tag.has_attr(attr):
-                del img_tag[attr]
-        
-        # FIX: Minimal styling for maximum width in landscape
-        img_tag['style'] = 'max-width: 100%; height: auto;'
+        # Add back the essential responsive styling for images
+        img_tag['style'] = 'max-width: 100%; height: auto; display: block;'
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
@@ -807,7 +804,6 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                     f.write(img_data)
                 
                 img_tag['src'] = temp_img_path
-                
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
                 img_tag.decompose()
@@ -829,27 +825,13 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                         img_tag['src'] = temp_img_path
                     else:
                         img_tag.decompose()
-
             except Exception as e:
                 st.warning(f"Could not process CID image '{src}': {e}")
                 img_tag.decompose()
 
-    # --- Remove all table constraints for landscape ---
+    # --- Add back styling for tables ---
     for table in main_content.find_all('table'):
-        for attr in ['width', 'style', 'border', 'cellpadding', 'cellspacing', 'class']:
-            if table.has_attr(attr):
-                del table[attr]
-
-    # FIX: Add landscape-compatible container
-    if main_content.find():
-        container_div = soup.new_tag('div')
-        container_div['style'] = 'width: 100%; max-width: 100%; margin: 0; padding: 0;'
-        
-        for element in list(main_content.contents):
-            container_div.append(element)
-        
-        main_content.clear()
-        main_content.append(container_div)
+        table['style'] = 'width: 100%; border-collapse: collapse; table-layout: auto;'
 
     return str(main_content)
 
