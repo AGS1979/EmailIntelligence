@@ -960,7 +960,7 @@ def main():
                                 # Define a path for the temporary output file inside the temp_dir
                                 output_filename = os.path.join(temp_dir, "output.docx")
                                 
-                                # FIX 5: Add pypandoc arguments that help with image rendering
+                                # FIXED: Use only the essential arguments
                                 pypandoc.convert_text(
                                     full_html_content,
                                     'docx',
@@ -968,8 +968,7 @@ def main():
                                     outputfile=output_filename,
                                     extra_args=[
                                         f'--resource-path={temp_dir}',
-                                        '--wrap=none',  # Prevents unwanted text wrapping
-                                        '--reference-doc=/path/to/custom/reference.docx'  # Optional: create a custom reference doc
+                                        '--wrap=none'  # Prevents unwanted text wrapping
                                     ]
                                 )
                                 
