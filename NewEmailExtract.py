@@ -366,27 +366,35 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
         
     soup = BeautifulSoup(html_string, 'html.parser')
 
-    # --- 1. Extract Main Content ---
+    # --- 1. Remove known junk/boilerplate elements ---
+    # Find and remove the "CAUTION: This email..." warning, which is often in a table or div
+    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
+    for element in caution_elements:
+        # Find the parent table or div and remove it
+        parent_container = element.find_parent('table') or element.find_parent('div')
+        if parent_container:
+            parent_container.decompose()
+
+    # --- 2. Extract the main content section ---
+    # Many Outlook emails wrap the main content in a div with this class
     main_content = soup.find('div', class_='WordSection1')
     if not main_content:
         main_content = soup.body if soup.body else soup
     if not main_content:
-        return ""
+        return "" # Return empty if no content can be found
 
-    # --- 2. Process all image tags ---
+    # --- 3. Process all image tags within the main content ---
     for img_tag in main_content.find_all('img'):
         src = img_tag.get('src')
         if not src:
+            img_tag.decompose() # Remove image tags with no source
             continue
         
         # --- Handle Base64 encoded images ---
         if src.startswith('data:image'):
             try:
-                # e.g., 'data:image/png;base64,iVBORw0KGgo...'
                 header, encoded = src.split(',', 1)
-                # e.g., 'data:image/png;base64'
                 img_type = header.split(';')[0].split('/')[1]
-                
                 img_data = base64.b64decode(encoded)
                 img_filename = f"{uuid.uuid4()}.{img_type}"
                 temp_img_path = os.path.join(temp_dir, img_filename)
@@ -397,28 +405,35 @@ def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
                 img_tag['src'] = temp_img_path
             except Exception as e:
                 st.warning(f"Could not process a Base64 image: {e}")
-                # Remove the broken tag to prevent errors
-                img_tag.decompose()
+                img_tag.decompose() # Remove broken tag
 
         # --- Handle CID embedded images (requires the .msg file) ---
         elif src.startswith('cid:') and msg_file_path:
             try:
+                # Use a context manager to ensure the file is handled properly
                 with Message(msg_file_path) as msg:
-                    cid_attachments = {att.cid: att for att in msg.attachments if att.cid}
+                    # Create a dictionary for quick lookups
+                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
                     cid = src[4:]
+                    
                     if cid in cid_attachments:
                         attachment = cid_attachments[cid]
-                        img_filename = attachment.longFilename or f"{cid}.png"
-                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", img_filename)
+                        # Use a safe filename
+                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
                         temp_img_path = os.path.join(temp_dir, safe_img_filename)
+                        
                         with open(temp_img_path, "wb") as f:
                             f.write(attachment.data)
                         img_tag['src'] = temp_img_path
+                    else:
+                        # If CID not found, remove the broken image link
+                        img_tag.decompose()
+
             except Exception as e:
                 st.warning(f"Could not process CID image '{src}': {e}")
                 img_tag.decompose()
 
-    # --- 3. Return the cleaned HTML as a string ---
+    # --- 4. Return the cleaned HTML as a string ---
     return str(main_content)
 
 
@@ -698,9 +713,10 @@ def main():
                         if 'processedat' in df_for_export.columns:
                             df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
                         
-                        parser = HtmlToDocx()
-
+                        # The parser is now instantiated INSIDE the loop
                         for i, (index, row) in enumerate(df_for_export.iterrows()):
+                            parser = HtmlToDocx() # <<< FIX: Create a new parser for each email
+
                             doc.add_page_break()
                             doc.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=1)
                             doc.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=2)
@@ -711,10 +727,11 @@ def main():
                             p.add_run('Broker: ').bold = True
                             p.add_run(f"{row.get('brokername', 'N/A')}")
                             
-                            cleaned_html = row.get('emailcontent', '<p>No content available.</p>')
+                            original_html = row.get('emailcontent', '<p>No content available.</p>')
                             blob_name = row.get('blob_name')
                             tmp_msg_path = None
 
+                            # Re-process from .msg file if available to get images
                             if blob_name and pd.notna(blob_name):
                                 try:
                                     blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
@@ -724,12 +741,18 @@ def main():
                                     with os.fdopen(fd, 'wb') as tmp_file:
                                         tmp_file.write(msg_bytes)
                                     
-                                    original_html = row.get('emailcontent', '')
+                                    # Use the original HTML from the database row
                                     cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir, tmp_msg_path)
                                 
                                 except Exception as e:
                                     st.warning(f"Could not re-process email to extract images: {blob_name}. Error: {e}")
-                            
+                                    # Fallback to cleaning the stored HTML without the .msg context
+                                    cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir)
+
+                            else:
+                                # Process HTML for emails that weren't uploaded as .msg
+                                cleaned_html = parse_and_clean_html_for_docx(original_html, temp_dir)
+
                             try:
                                 parser.add_html_to_document(cleaned_html, doc)
                             except (IndexError, KeyError) as e:
@@ -740,7 +763,6 @@ def main():
                                 doc.add_paragraph(
                                     f"[An unexpected error occurred while rendering email content: {e}]"
                                 )
-
 
                             word_progress.progress((i + 1) / len(df_for_export), text=f"Processing {i+1}/{len(df_for_export)}: {row.get('company', 'N/A')}")
                         
