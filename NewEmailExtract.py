@@ -880,10 +880,8 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                 continue
         
         if image_data:
-            # === THE KEY FIX: CROP THE IMAGE DATA ===
-            cropped_data = crop_image_whitespace(image_data)
-            
-            # Save the (now cropped) image to a temp file
+            cropped_data = image_data  # <-- Use the original data!
+
             img_type = Image.open(io.BytesIO(cropped_data)).format.lower() or 'png'
             img_filename = f"{uuid.uuid4()}.{img_type}"
             temp_img_path = os.path.join(temp_dir, img_filename)
