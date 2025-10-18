@@ -760,29 +760,38 @@ def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=Non
 
 def crop_image_whitespace(image_bytes: bytes) -> bytes:
     """
-    Crops whitespace from an image using Pillow.
-    
-    Args:
-        image_bytes: The raw bytes of the image file.
-
-    Returns:
-        The raw bytes of the cropped image, or the original bytes on failure.
+    Crops whitespace from an image using Pillow, assuming a WHITE background.
     """
     try:
         image = Image.open(io.BytesIO(image_bytes))
 
-        # Get the background color from the top-left pixel
-        bg = Image.new(image.mode, image.size, image.getpixel((0, 0)))
+        # Create a solid white background of the same mode and size
+        if image.mode == 'RGBA':
+            # If it has alpha, use the alpha channel's bounding box
+            bbox = image.getbbox()
+        else:
+            # Assume white background for other modes
+            original_mode = image.mode
+            if image.mode == 'L':  # Grayscale
+                bg = Image.new(image.mode, image.size, 255)
+            elif image.mode == 'P':  # Palette
+                # Convert to RGB to handle it
+                image = image.convert('RGB')
+                bg = Image.new(image.mode, image.size, (255, 255, 255))
+            else:  # Assume RGB
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                bg = Image.new(image.mode, image.size, (255, 255, 255))
+        
+            # Find the difference between the image and the solid white background
+            diff = ImageChops.difference(image, bg)
 
-        # Find the difference between the image and the solid background
-        diff = ImageChops.difference(image, bg)
-
-        # Get the bounding box of the non-background area
-        bbox = diff.getbbox()
+            # Get the bounding box of the non-white area
+            bbox = diff.getbbox()
 
         if bbox:
-            # Crop the image to this bounding box, adding a 10-pixel padding
-            padding = 10 
+            # Crop the image to this bounding box, adding a small padding
+            padding = 5  # 5px padding is a bit safer than 10px
             cropped_bbox = (
                 max(0, bbox[0] - padding),
                 max(0, bbox[1] - padding),
@@ -793,14 +802,27 @@ def crop_image_whitespace(image_bytes: bytes) -> bytes:
 
             # Save the cropped image to a new byte buffer
             buffer = io.BytesIO()
-            image_format = image.format or 'PNG' # Use original format or default
-            cropped_image.save(buffer, format=image_format)
+            # Preserve original format if possible, default to PNG
+            image_format = image.format or 'PNG' 
+            
+            # If we converted from Palette, we must save as PNG/JPEG
+            if original_mode == 'P':
+                 image_format = 'PNG'
+            
+            # Handle formats that PIL can't save (like 'MPO')
+            try:
+                cropped_image.save(buffer, format=image_format)
+            except KeyError:
+                cropped_image.save(buffer, format='PNG')
+                
             return buffer.getvalue()
         else:
-            # No difference found, image is likely a solid color
+            # No difference found (image is solid white)
             return image_bytes
-    except Exception:
+            
+    except Exception as e:
         # If any error occurs, fallback to the original image to prevent crashes
+        st.warning(f"Failed to crop whitespace from image: {e}")
         return image_bytes
 
 def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
