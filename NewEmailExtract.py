@@ -827,8 +827,7 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
             if img_tag.has_attr(attr):
                 del img_tag[attr]
         
-        # Force the image to scale to 100% of the available page width
-        img_tag['width'] = "100%"
+        img_tag['style'] = 'width: 100%; max-width: 100%; height: auto; display: block;'
         
         image_data = None
         
