@@ -209,19 +209,23 @@ def insert_into_db(data):
     data_lowercase_keys = {key.lower(): value for key, value in data.items()}
     df = pd.DataFrame([data_lowercase_keys])
 
-    # 1. Cast types to handle 'None' as a number (this is correct)
+    # 1. Cast types to handle 'None' as a number
     if 'fiscalyear' in df.columns:
         df['fiscalyear'] = df['fiscalyear'].astype('Int64')
     if 'fiscalquarter' in df.columns:
         df['fiscalquarter'] = df['fiscalquarter'].astype('Int64')
 
-    # --- FINAL FIX ---
-    # 2. Convert all pd.NA (from Int64) and np.nan (from float)
-    #    into Python's 'None', which the database driver understands.
-    df = df.astype(object).where(pd.notnull(df), None)
-    # --- END FINAL FIX ---
+    # --- THIS IS THE FIX ---
+    # 2. Clean null characters ('\x00' or '\u0000') from text fields.
+    #    This is what your new error log is complaining about.
+    if 'emailcontent' in df.columns and df['emailcontent'].iloc[0] is not None:
+        df['emailcontent'] = df['emailcontent'].astype(str).str.replace(r'\x00|\u0000', '', regex=True)
+    if 'emailsubject' in df.columns and df['emailsubject'].iloc[0] is not None:
+        df['emailsubject'] = df['emailsubject'].astype(str).str.replace(r'\x00|\u0000', '', regex=True)
+    # --- END FIX ---
 
-    # (The debug lines are no longer needed as we've found the issue)
+    # 3. Convert all pd.NA/np.nan to Python 'None' for the driver
+    df = df.astype(object).where(pd.notnull(df), None)
 
     with engine.connect() as conn:
         df.to_sql('email_data', con=conn, if_exists='append', index=False)
