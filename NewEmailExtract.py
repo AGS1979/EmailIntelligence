@@ -209,16 +209,16 @@ def insert_into_db(data):
     data_lowercase_keys = {key.lower(): value for key, value in data.items()}
     df = pd.DataFrame([data_lowercase_keys])
 
-    # --- START FIX ---
-    # Explicitly cast fiscal columns to pandas' nullable integer type ('Int64')
-    # This correctly handles Python 'None' and converts it to a database 'NULL'.
+    # --- THIS IS THE CRITICAL PART (Step 2) ---
+    # You MUST have these lines to handle emails where
+    # the LLM can't find a year or quarter.
     if 'fiscalyear' in df.columns:
         df['fiscalyear'] = df['fiscalyear'].astype('Int64')
     if 'fiscalquarter' in df.columns:
         df['fiscalquarter'] = df['fiscalquarter'].astype('Int64')
-    # --- END FIX ---
+    # --- END CRITICAL PART ---
     
-    # (I've left the debug lines in, just in case this still fails)
+    # (Debug lines are optional)
     try:
         st.warning(f"DEBUG: Trying to insert columns: {list(df.columns)}")
         st.dataframe(df.dtypes.astype(str), use_container_width=True)
@@ -647,7 +647,7 @@ def process_emails(email_source, source_type):
             else:
                 status_container.warning(f"❌ Could not find a match for '{company_to_find}'")
 
-            #report["MatchStatus"] = match_status
+            report["MatchStatus"] = match_status
             insert_into_db(report)
 
     progress_bar.progress(1.0, text="Processing complete!")
