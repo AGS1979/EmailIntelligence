@@ -630,7 +630,7 @@ def process_emails(email_source, source_type):
             else:
                 status_container.warning(f"❌ Could not find a match for '{company_to_find}'")
 
-            report["MatchStatus"] = match_status
+            #report["MatchStatus"] = match_status
             insert_into_db(report)
 
     progress_bar.progress(1.0, text="Processing complete!")
