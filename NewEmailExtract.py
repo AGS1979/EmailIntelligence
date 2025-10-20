@@ -209,21 +209,19 @@ def insert_into_db(data):
     data_lowercase_keys = {key.lower(): value for key, value in data.items()}
     df = pd.DataFrame([data_lowercase_keys])
 
-    # --- THIS IS THE CRITICAL PART (Step 2) ---
-    # You MUST have these lines to handle emails where
-    # the LLM can't find a year or quarter.
+    # 1. Cast types to handle 'None' as a number (this is correct)
     if 'fiscalyear' in df.columns:
         df['fiscalyear'] = df['fiscalyear'].astype('Int64')
     if 'fiscalquarter' in df.columns:
         df['fiscalquarter'] = df['fiscalquarter'].astype('Int64')
-    # --- END CRITICAL PART ---
-    
-    # (Debug lines are optional)
-    try:
-        st.warning(f"DEBUG: Trying to insert columns: {list(df.columns)}")
-        st.dataframe(df.dtypes.astype(str), use_container_width=True)
-    except Exception as e:
-        st.error(f"Error during debug print: {e}")
+
+    # --- FINAL FIX ---
+    # 2. Convert all pd.NA (from Int64) and np.nan (from float)
+    #    into Python's 'None', which the database driver understands.
+    df = df.astype(object).where(pd.notnull(df), None)
+    # --- END FINAL FIX ---
+
+    # (The debug lines are no longer needed as we've found the issue)
 
     with engine.connect() as conn:
         df.to_sql('email_data', con=conn, if_exists='append', index=False)
