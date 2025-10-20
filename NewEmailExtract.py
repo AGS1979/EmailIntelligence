@@ -208,6 +208,23 @@ def get_master_broker_names():
 def insert_into_db(data):
     data_lowercase_keys = {key.lower(): value for key, value in data.items()}
     df = pd.DataFrame([data_lowercase_keys])
+
+    # --- START FIX ---
+    # Explicitly cast fiscal columns to pandas' nullable integer type ('Int64')
+    # This correctly handles Python 'None' and converts it to a database 'NULL'.
+    if 'fiscalyear' in df.columns:
+        df['fiscalyear'] = df['fiscalyear'].astype('Int64')
+    if 'fiscalquarter' in df.columns:
+        df['fiscalquarter'] = df['fiscalquarter'].astype('Int64')
+    # --- END FIX ---
+    
+    # (I've left the debug lines in, just in case this still fails)
+    try:
+        st.warning(f"DEBUG: Trying to insert columns: {list(df.columns)}")
+        st.dataframe(df.dtypes.astype(str), use_container_width=True)
+    except Exception as e:
+        st.error(f"Error during debug print: {e}")
+
     with engine.connect() as conn:
         df.to_sql('email_data', con=conn, if_exists='append', index=False)
         conn.commit()
