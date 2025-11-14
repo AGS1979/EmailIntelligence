@@ -495,7 +495,11 @@ def process_emails(email_source, source_type, email_theme=None):
             continue
         
         # ⭐️ Use the *already-cleaned* plain_body for the LLM
-        extracted = extract_info_with_chatgpt(subject, plain_body, master_brokers)
+        # --- START OF NEW DEBUG CODE ---
+        if not extracted or "reports" not in extracted or not extracted["reports"]:
+            status_container.warning(f"⚠️ OpenAI failed to extract any reports from: '{subject}'. Nothing will be saved for this email.")
+            continue # Skip to the next email
+        # --- END OF NEW DEBUG CODE ---
         if not (extracted and "reports" in extracted): continue
 
         for report in extracted["reports"]:
@@ -532,7 +536,14 @@ def process_emails(email_source, source_type, email_theme=None):
                 status_container.warning(f"❌ Could not find a match for '{company_to_find}'")
 
             report["MatchStatus"] = match_status
-            insert_into_db(report)
+            # --- START OF NEW DEBUG CODE ---
+            try:
+                status_container.success(f"✅ Extracted report for '{report.get('Company', 'N/A')}' from '{subject}'. Attempting to save...")
+                insert_into_db(report)
+            except Exception as db_error:
+                status_container.error(f"❌ DATABASE ERROR for '{subject}': {db_error}")
+                st.error(f"Failed to insert data: {report}")
+            # --- END OF NEW DEBUG CODE ---
 
     progress_bar.progress(1.0, text="Processing complete!")
     st.success("✅ Processing complete! The database has been updated.")
