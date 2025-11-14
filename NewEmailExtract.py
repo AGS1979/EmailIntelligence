@@ -366,152 +366,14 @@ def clean_plain_text_for_llm(text):
 
 def clean_html_for_database(html_string):
     """
-    Aggressively cleans HTML *before* saving to the database.
-    Removes headers, footers, disclaimers, logos, and signatures.
+    Pass-through function.
+    We will store the raw HTML and do all cleaning during the export step.
+    This ensures data is saved reliably.
     """
     if not html_string:
         return ""
-        
-    soup = BeautifulSoup(html_string, 'html.parser')
-    
-    # Define patterns for removal
-    removal_patterns = [
-        # --- Junk text artifacts ---
-        re.compile(r'The following table:', re.IGNORECASE),
-        re.compile(r'^\s*Just text\s*$', re.IGNORECASE),
-        
-        # --- Classification/Warnings ---
-        re.compile(r'CAUTION: This email has been sent from outside', re.IGNORECASE),
-        re.compile(r'This is classified as Wisayah', re.IGNORECASE),
-        re.compile(r'Classification: Wisayah', re.IGNORECASE),
-        re.compile(r"don't often get email from", re.IGNORECASE),
-        
-        # --- Email Headers (split into individual lines) ---
-        re.compile(r'^\s*From:', re.IGNORECASE),
-        re.compile(r'^\s*Sent:', re.IGNORECASE),
-        re.compile(r'^\s*To:', re.IGNORECASE),
-        re.compile(r'^\s*Subject:', re.IGNORECASE),
-
-        # --- Signatures / Analyst Names ---
-        re.compile(r'Regards', re.IGNORECASE),
-        re.compile(r'Best regards', re.IGNORECASE),
-        re.compile(r'Eric Robertsen', re.IGNORECASE),
-        re.compile(r'Jordan Isvy', re.IGNORECASE),
-        re.compile(r'Carlos Eduardo Garcia Martinez', re.IGNORECASE),
-        re.compile(r'Vishal Kumar Manoria', re.IGNORECASE),
-        
-        # --- Disclaimers ---
-        re.compile(r'LinkedIn', re.IGNORECASE),
-        re.compile(r'unsubscribe', re.IGNORECASE),
-        re.compile(r'confidential', re.IGNORECASE),
-        re.compile(r'This email and any attachments', re.IGNORECASE),
-        re.compile(r'intended only for the use of the individual', re.IGNORECASE),
-        re.compile(r'Disclosures appendix', re.IGNORECASE),
-        re.compile(r'Copyright \d{4}', re.IGNORECASE), # More general
-        re.compile(r'intended for institutional investors', re.IGNORECASE),
-        re.compile(r'If you are in scope for MiFID II', re.IGNORECASE),
-        re.compile(r'For analyst certifications and important disclosures', re.IGNORECASE),
-        re.compile(r'All rights reserved', re.IGNORECASE),
-        
-        # --- Navigation / Buttons ---
-        re.compile(r'Read Now', re.IGNORECASE),
-        re.compile(r'Continue Reading', re.IGNORECASE),
-        re.compile(r'Explore Hub', re.IGNORECASE),
-        re.compile(r'Read the Report', re.IGNORECASE),
-        re.compile(r'Click the button above to listen', re.IGNORECASE),
-        re.compile(r"Can't open the report\?", re.IGNORECASE),
-        re.compile(r'Scan code to view the report', re.IGNORECASE)
-    ]
-    
-    logo_alt_patterns = [
-        re.compile(r'aranca', re.IGNORECASE),
-        re.compile(r'standard charte', re.IGNORECASE),
-        re.compile(r'logo', re.IGNORECASE),
-        re.compile(r'podcast', re.IGNORECASE),
-        re.compile(r'Listen', re.IGNORECASE),
-        re.compile(r'scan code', re.IGNORECASE),
-        re.compile(r'barclays', re.IGNORECASE)
-    ]
-
-    # --- Removal Pass 1: Text-based junk containers ---
-    # Find all text nodes.
-    all_text_nodes = soup(string=True)
-    
-    nodes_to_decompose = set()
-
-    for text_node in all_text_nodes:
-        # Strip text for more reliable matching
-        node_text = str(text_node).strip()
-        if not node_text:
-            continue
-            
-        for pattern in removal_patterns:
-            if pattern.search(node_text):
-                # Found junk text. Add its container to the removal set.
-                parent_to_remove = None
-                current = text_node.find_parent()
-                
-                while current and current.name != 'body':
-                    # We want to remove the *entire row* or a block-level element.
-                    if current.name in ['tr', 'p', 'div']:
-                        parent_to_remove = current
-                        break
-                    # If it's in a table cell, go up to the row
-                    if current.name == 'td':
-                         row = current.find_parent('tr')
-                         if row:
-                             parent_to_remove = row
-                             break
-                    current = current.find_parent()
-                
-                # If we didn't find a good container, just remove the immediate parent <p>
-                if not parent_to_remove and text_node.find_parent().name == 'p':
-                     parent_to_remove = text_node.find_parent()
-
-                if parent_to_remove:
-                    nodes_to_decompose.add(parent_to_remove)
-                break # Move to the next text node
-
-    # Decompose in a separate loop to avoid modifying the tree while iterating
-    for node in nodes_to_decompose:
-        if node.find_parent(): # Check if it wasn't already decomposed as a child
-            node.decompose()
-
-    # --- Removal Pass 2: Image-based junk (logos, spacers) ---
-    for img_tag in soup.find_all('img'):
-        alt_text = img_tag.get('alt', '')
-        src_text = img_tag.get('src', '')
-        is_junk = False
-        
-        for pattern in logo_alt_patterns:
-            if pattern.search(alt_text) or pattern.search(src_text):
-                is_junk = True
-                break
-        
-        style = img_tag.get('style', '')
-        if 'width: 1px' in style or 'height: 1px' in style or 'width: 0px' in style:
-            is_junk = True
-        if img_tag.get('width') in ['1', '0'] or img_tag.get('height') in ['1', '0']:
-            is_junk = True
-        
-        if is_junk:
-            # Also try to remove the parent container (row, link, etc.)
-            parent_to_remove = None
-            current = img_tag.find_parent()
-            while current and current.name != 'body':
-                if current.name in ['tr', 'p', 'div', 'a']:
-                    parent_to_remove = current
-                    break
-                current = current.find_parent()
-            
-            if parent_to_remove:
-                if parent_to_remove.find_parent(): # Check it's not already gone
-                    parent_to_remove.decompose()
-            else:
-                if img_tag.find_parent(): # Check it's not already gone
-                    img_tag.decompose()
-
-    return str(soup)
+    # Store the raw HTML as-is to ensure the database insert never fails
+    return str(html_string)
 
 
 
@@ -696,81 +558,138 @@ def generate_sas_url(container_name, blob_name):
 
 # ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
 # ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
+# ⭐️ --- NEW ALL-IN-ONE EXPORT CLEANING FUNCTION --- ⭐️
 def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
     """
-    Aggressively cleans HTML by removing known junk, disclaimers, and signatures
-    before processing images for Word export.
+    Aggressively cleans HTML from the database for Word export.
+    This function removes ALL junk text, disclaimers, and signatures,
+    and also processes images and fixes layout for Pandoc.
     """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
     
-    # --- Define keywords for removal ---
-    caution_keywords = [re.compile(r'CAUTION: This email has been sent from outside', re.IGNORECASE)]
-    signature_keywords = [
-        re.compile(r'Regards', re.IGNORECASE),
-        re.compile(r'Best regards', re.IGNORECASE),
-        re.compile(r'Vishal Kumar Manoria', re.IGNORECASE),
-        re.compile(r'Senior Manager', re.IGNORECASE),
-        re.compile(r'Investment Research', re.IGNORECASE),
-        re.compile(r'Aranca', re.IGNORECASE),
-        re.compile(r'LinkedIn', re.IGNORECASE),
-        re.compile(r'YouTube', re.IGNORECASE)
+    # --- Define patterns for removal ---
+    removal_patterns = [
+        # --- Classification/Warnings ---
+        re.compile(r'Classification: Wisayah', re.I),
+        re.compile(r'This is classified as Wisayah', re.I),
+        re.compile(r'CAUTION: This email has been sent from outside', re.I),
+        re.compile(r"don't often get email from", re.I),
+        
+        # --- Junk text artifacts ---
+        re.compile(r'^\s*Just text\s*$', re.I),
+        re.compile(r'^\s*The following table:\s*$', re.I),
+        
+        # --- Email Headers (as individual lines) ---
+        re.compile(r'^\s*From:', re.I),
+        re.compile(r'^\s*Sent:', re.I),
+        re.compile(r'^\s*To:', re.I),
+        re.compile(r'^\s*Subject:', re.I),
+
+        # --- Signatures / Analyst Names ---
+        re.compile(r'Eric Robertsen', re.I),
+        re.compile(r'Jordan Isvy', re.I),
+        re.compile(r'Carlos Eduardo Garcia Martinez', re.I),
+        
+        # --- Disclaimers ---
+        re.compile(r'Disclosures appendix', re.I),
+        re.compile(r'Copyright \d{4}', re.I),
+        re.compile(r'intended for institutional investors', re.I),
+        re.compile(r'If you are in scope for MiFID II', re.I),
+        re.compile(r'For analyst certifications and important disclosures', re.I),
+        re.compile(r'All rights reserved', re.I),
+        re.compile(r'https://research.sc.com/Portal/Public/TermsConditions', re.I),
+        re.compile(r'MiFID II research and inducement rules apply', re.I),
+        re.compile(r'SCB accepts no liability', re.I),
+
+        # --- Navigation / Buttons ---
+        re.compile(r'^\s*Read Now\s*$', re.I),
+        re.compile(r'^\s*Continue Reading\s*$', re.I),
+        re.compile(r'^\s*Explore Hub\s*$', re.I),
+        re.compile(r'^\s*Read the Report\s*$', re.I),
+        re.compile(r'Click the button above to listen', re.I),
+        re.compile(r"Can't open the report\?", re.I),
+        re.compile(r'Scan code to view the report', re.I)
     ]
-    disclaimer_keywords = [
-        re.compile(r'unsubscribe', re.IGNORECASE),
-        re.compile(r'confidential', re.IGNORECASE),
-        re.compile(r'This email and any attachments', re.IGNORECASE),
-        re.compile(r'intended only for the use of the individual', re.IGNORECASE)
-    ]
-    logo_alt_texts = [
-        re.compile(r'aranca', re.IGNORECASE),
-        re.compile(r'standard chartered', re.IGNORECASE),
-        re.compile(r'logo', re.IGNORECASE)
+    
+    logo_alt_patterns = [
+        re.compile(r'logo', re.I),
+        re.compile(r'podcast', re.I),
+        re.compile(r'Listen', re.I),
+        re.compile(r'barclays', re.I),
+        re.compile(r'standard charte', re.I),
+        re.compile(r'aranca', re.I)
     ]
 
-    all_keywords = caution_keywords + signature_keywords + disclaimer_keywords
+    # --- Removal Pass 1: Text-based junk ---
+    all_text_nodes = soup(string=True)
+    nodes_to_decompose = set()
 
-    # --- Remove text elements and their parents ---
-    for keyword in all_keywords:
-        elements = soup.find_all(text=keyword)
-        for element in elements:
-            # Find the most likely "junk" container (table, div, or p) and remove it
-            parent = element.find_parent('table') or element.find_parent('div') or element.find_parent('p')
-            if parent:
-                parent.decompose()
+    for text_node in all_text_nodes:
+        node_text = str(text_node).strip()
+        if not node_text:
+            continue
+            
+        for pattern in removal_patterns:
+            if pattern.search(node_text):
+                parent_to_remove = None
+                current = text_node.find_parent()
+                
+                while current and current.name != 'body':
+                    # Find the most likely "block" to remove
+                    if current.name in ['tr', 'p', 'div']:
+                        parent_to_remove = current
+                        break
+                    # If it's in a table cell, go up to the row
+                    if current.name == 'td':
+                         row = current.find_parent('tr')
+                         if row:
+                             parent_to_remove = row
+                             break
+                    current = current.find_parent()
+                
+                if parent_to_remove:
+                    nodes_to_decompose.add(parent_to_remove)
+                break # Move to the next text node
 
-    # --- Remove images that are likely logos ---
+    # Decompose in a separate loop
+    for node in nodes_to_decompose:
+        if node.find_parent(): 
+            node.decompose()
+
+    # --- Removal Pass 2: Image-based junk (logos, spacers) ---
     for img_tag in soup.find_all('img'):
         alt_text = img_tag.get('alt', '')
         src_text = img_tag.get('src', '')
+        is_junk = False
         
-        is_logo = False
-        for pattern in logo_alt_texts:
-            if pattern.search(alt_text):
-                is_logo = True
+        for pattern in logo_alt_patterns:
+            if pattern.search(alt_text) or pattern.search(src_text):
+                is_junk = True
                 break
         
-        # Also check src for logo keywords
-        if not is_logo and 'logo' in src_text.lower():
-            is_logo = True
+        if is_junk:
+            parent_to_remove = img_tag.find_parent('tr') or img_tag.find_parent('p') or img_tag
+            if parent_to_remove and parent_to_remove.find_parent():
+                 parent_to_remove.decompose()
+            elif img_tag.find_parent():
+                 img_tag.decompose()
+            continue # This was junk, skip to next image
             
-        if is_logo:
-            img_tag.decompose()
-            continue # Skip to next image if this one was decomposed
-            
-        # --- Process remaining images (Charts, etc.) ---
+        # --- Process REMAINING images (Charts, etc.) ---
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
         
         # Reset styles to prevent Word from breaking layout
-        for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
+        for attr in ['style', 'border', 'align', 'class']:
             if img_tag.has_attr(attr):
                 del img_tag[attr]
-        img_tag['style'] = 'width: 100%; max-width: 100%; height: auto; display: block;'
+        # Set a style that Pandoc handles well
+        img_tag['style'] = 'max-width: 100%; height: auto; display: block;'
         
         image_data = None
         
@@ -812,30 +731,36 @@ def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
             except Exception as img_e:
                 st.warning(f"Failed to process and save image: {img_e}")
                 img_tag.decompose()
+        elif not src.startswith('data:image'):
+             img_tag.decompose() # Remove broken CIDs, etc.
 
-    # --- CHANGE 1: Relaxed table styling ---
-    # This styling was *too aggressive* and forced all tables to 100% width.
-    # The new styling just removes problematic attributes and ensures collapse.
+    # --- Fix table layouts ---
     for table in soup.find_all('table'):
         # Remove attributes that cause layout issues in Word
         for attr in ['width', 'height', 'style', 'border', 'align', 'cellpadding', 'cellspacing', 'class']:
             if table.has_attr(attr):
                 del table[attr]
-        # Apply a more flexible style
+        # Apply a more flexible style that Pandoc understands
         table['style'] = 'border-collapse: collapse; max-width: 100%;'
-        # We removed table-layout: fixed and width: 100% to let tables auto-size
+        
+        # Apply style to all cells
+        for cell in table.find_all(['td', 'th']):
+            for attr in ['style', 'border', 'align', 'class']:
+                 if cell.has_attr(attr):
+                    del cell[attr]
+            # Add simple border and vertical alignment
+            cell['style'] = 'border: 1px solid #ddd; padding: 4px; vertical-align: top;'
 
-    # --- CHANGE 2: Return *inner HTML* of the body ---
-    # This is the main fix. We find the body but return its *contents*
-    # instead of the body tag itself. This prevents nested <body> tags.
+    # --- THIS IS THE CRITICAL LAYOUT FIX ---
+    # Find the main content body.
     main_content_node = soup.find('div', class_='WordSection1') or soup.body
     
     if main_content_node:
-        # We want the *inner HTML* of the body/Word section, not the tag itself.
-        # This prevents nested <body> tags when we build the final HTML.
+        # Return *only the inner HTML* of the body.
+        # This prevents nested <body> tags, which causes the "single column table" bug.
         return main_content_node.decode_contents()
     else:
-        # Fallback for HTML fragments that don't have a <body>
+        # Fallback for HTML fragments that don't have a <body>.
         return str(soup)
 
 
