@@ -637,6 +637,7 @@ def generate_sas_url(container_name, blob_name):
         return None
 
 # ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
+# ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
 def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
     """
     Aggressively cleans HTML by removing known junk, disclaimers, and signatures
@@ -754,17 +755,30 @@ def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
                 st.warning(f"Failed to process and save image: {img_e}")
                 img_tag.decompose()
 
-    # --- Fix table layouts ---
+    # --- CHANGE 1: Relaxed table styling ---
+    # This styling was *too aggressive* and forced all tables to 100% width.
+    # The new styling just removes problematic attributes and ensures collapse.
     for table in soup.find_all('table'):
-        for attr in ['width', 'style', 'border', 'cellpadding', 'cellspacing']:
+        # Remove attributes that cause layout issues in Word
+        for attr in ['width', 'height', 'style', 'border', 'align', 'cellpadding', 'cellspacing', 'class']:
             if table.has_attr(attr):
                 del table[attr]
-        table['style'] = 'width: 100%; border-collapse: collapse; table-layout: fixed;'
+        # Apply a more flexible style
+        table['style'] = 'border-collapse: collapse; max-width: 100%;'
+        # We removed table-layout: fixed and width: 100% to let tables auto-size
 
-    # Find main content body if possible
-    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
+    # --- CHANGE 2: Return *inner HTML* of the body ---
+    # This is the main fix. We find the body but return its *contents*
+    # instead of the body tag itself. This prevents nested <body> tags.
+    main_content_node = soup.find('div', class_='WordSection1') or soup.body
     
-    return str(main_content)
+    if main_content_node:
+        # We want the *inner HTML* of the body/Word section, not the tag itself.
+        # This prevents nested <body> tags when we build the final HTML.
+        return main_content_node.decode_contents()
+    else:
+        # Fallback for HTML fragments that don't have a <body>
+        return str(soup)
 
 
 # --- MAIN UI ---
