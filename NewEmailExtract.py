@@ -539,7 +539,8 @@ def extract_info_with_chatgpt(subject, body, master_brokers):
         st.error(f"Error with OpenAI API call: {e}"); return None
 
 # --- CORE PROCESSING FUNCTION ---
-def process_emails(email_source, source_type):
+# ⭐️ CHANGE: Added 'email_theme=None' parameter
+def process_emails(email_source, source_type, email_theme=None):
     master_companies_df = get_master_company_data()
     master_brokers = get_master_broker_names()
 
@@ -637,6 +638,13 @@ def process_emails(email_source, source_type):
             report['EmailSubject'] = subject
             report['EmailContent'] = raw_html_body  # This should now be properly decoded
             report['blob_name'] = blob_name
+
+            # ⭐️ CHANGE: Add the selected email theme to the report data
+            # If the theme is "Select a category...", store None (NULL)
+            if email_theme and email_theme != "Select a category...":
+                report['EmailTheme'] = email_theme
+            else:
+                report['EmailTheme'] = None # Explicitly set to None for clarity
 
             company_to_find = report.get("Company", "N/A")
             matched_row, match_status = find_company_in_master(report, master_companies_df.copy())
@@ -938,14 +946,35 @@ def main():
                             token = get_graph_api_token()
                             if token:
                                 emails = scan_outlook_emails(target_email, token, target_domain)
-                                if emails: process_emails(emails, 'outlook')
+                                if emails: 
+                                    # ⭐️ CHANGE: Pass no theme for Outlook scans
+                                    process_emails(emails, 'outlook', email_theme=None) 
                                 elif emails is not None: st.success("✅ No new unread emails found.")
         with scan_tab2:
             with st.container(border=True):
                 st.subheader("Upload .msg Files")
                 uploaded_files = st.file_uploader("Select .msg files to process", type=["msg"], accept_multiple_files=True, key="msg_uploader")
+
+                # ⭐️ --- NEW CODE: Category Selection --- ⭐️
+                email_categories = [
+                    'Select a category...', 
+                    'GCC', 
+                    'Global Macro & Thematics', 
+                    'Everything AI', 
+                    'US Rates & FI Technicals', 
+                    'EM'
+                ]
+                selected_email_theme = st.selectbox(
+                    "Select Email Category (Optional):",
+                    options=email_categories,
+                    key="email_theme_select"
+                )
+                # ⭐️ --- END NEW CODE --- ⭐️
+
                 if st.button("Process Uploaded Emails", type="primary", use_container_width=True, key="process_upload_button"):
-                    if uploaded_files: process_emails(uploaded_files, 'upload')
+                    if uploaded_files: 
+                        # ⭐️ CHANGE: Pass the selected theme to the processor
+                        process_emails(uploaded_files, 'upload', email_theme=selected_email_theme)
                     else: st.warning("Please upload at least one .msg file.")
 
     with nav_tab2:
@@ -982,6 +1011,10 @@ def main():
                 with col2:
                     selected_companies = st.multiselect("Company Name:", get_options('company'))
                     selected_content_types = st.multiselect("Email Content Type:", get_options('contenttype'))
+                    
+                    # ⭐️ CHANGE: Add filter for the new EmailTheme column
+                    selected_email_themes = st.multiselect("Email Theme:", get_options('emailtheme'))
+
                 with col3:
                     if 'fiscalyear' in all_data_df.columns:
                         fiscal_years = sorted([int(x) for x in all_data_df['fiscalyear'].dropna().unique()], reverse=True)
@@ -1002,6 +1035,11 @@ def main():
                 filtered_df = filtered_df[filtered_df['company'].isin(selected_companies)]
             if selected_content_types:
                 filtered_df = filtered_df[filtered_df['contenttype'].isin(selected_content_types)]
+            
+            # ⭐️ CHANGE: Apply EmailTheme filter
+            if selected_email_themes:
+                filtered_df = filtered_df[filtered_df['emailtheme'].isin(selected_email_themes)]
+
             if 'selected_fiscal_years' in locals() and selected_fiscal_years:
                 filtered_df = filtered_df[filtered_df['fiscalyear'].isin(selected_fiscal_years)]
             if 'selected_fiscal_quarters' in locals() and selected_fiscal_quarters:
@@ -1079,7 +1117,10 @@ def main():
                                 all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                 all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
                                 date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
-                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}</p>")
+                                
+                                # ⭐️ CHANGE: Added EmailTheme to the Word doc header
+                                theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
+                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
                                 all_html_parts.append('</div>')
                                 
                                 original_html = row.get('emailcontent', '<p>No content available.</p>')
@@ -1153,7 +1194,7 @@ def main():
                                     f.write(full_html_content)
                                 st.info("A 'debug.html' file has been saved in the temp directory for inspection.")
 
-                            st.rerun()
+                        st.rerun()
 
                 if st.session_state.get('word_data'):
                     st.download_button(
