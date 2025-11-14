@@ -341,7 +341,119 @@ def scan_outlook_emails(user_id, token, sender_domain=None):
         return None
 
 
+# ⭐️ --- NEW CLEANING FUNCTIONS TO ADD --- ⭐️
 
+def clean_plain_text_for_llm(text):
+    """
+    Aggressively cleans plain text *before* sending to the LLM.
+    Removes forwarded headers, classification junk, etc.
+    """
+    if not text:
+        return ""
+    
+    # Remove forwarded headers (multi-line)
+    text = re.sub(r'From:.*Sent:.*To:.*Subject:.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove Wisayah classification junk
+    text = re.sub(r'This is classified as Wisayah.*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Classification: Wisayah.*', '', text, flags=re.IGNORECASE)
+    # Remove the "Just text" artifact
+    text = re.sub(r'^\s*Just text\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    # Remove the Outlook "don't often get email" warning
+    text = re.sub(r"Some people who received this message don't often get email from.*Learn why.*", '', text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Strip leading/trailing whitespace
+    return text.strip()
+
+def clean_html_for_database(html_string):
+    """
+    Aggressively cleans HTML *before* saving to the database.
+    Removes headers, footers, disclaimers, logos, and signatures.
+    """
+    if not html_string:
+        return ""
+        
+    soup = BeautifulSoup(html_string, 'html.parser')
+    
+    # Define patterns for removal
+    removal_patterns = [
+        re.compile(r'CAUTION: This email has been sent from outside', re.IGNORECASE),
+        re.compile(r'This is classified as Wisayah', re.IGNORECASE),
+        re.compile(r'Classification: Wisayah', re.IGNORECASE),
+        re.compile(r'From:.*Sent:.*To:.*Subject:', re.DOTALL | re.IGNORECASE),
+        re.compile(r"don't often get email from", re.IGNORECASE),
+        re.compile(r'Regards', re.IGNORECASE),
+        re.compile(r'Best regards', re.IGNORECASE),
+        re.compile(r'Vishal Kumar Manoria', re.IGNORECASE),
+        re.compile(r'Aranca', re.IGNORECASE),
+        re.compile(r'LinkedIn', re.IGNORECASE),
+        re.compile(r'unsubscribe', re.IGNORECASE),
+        re.compile(r'confidential', re.IGNORECASE),
+        re.compile(r'This email and any attachments', re.IGNORECASE),
+        re.compile(r'intended only for the use of the individual', re.IGNORECASE),
+        re.compile(r'Disclosures appendix', re.IGNORECASE),
+        re.compile(r'Copyright \d{4} Standard Chartered', re.IGNORECASE),
+        re.compile(r'intended for institutional investors', re.IGNORECASE),
+        re.compile(r'Eric Robertsen', re.IGNORECASE),
+        re.compile(r'Jordan Isvy', re.IGNORECASE),
+        re.compile(r'Carlos Eduardo Garcia Martinez', re.IGNORECASE),
+        re.compile(r'Read Now|Continue Reading|Explore Hub|Read the Report', re.IGNORECASE)
+    ]
+    
+    logo_alt_patterns = [
+        re.compile(r'aranca', re.IGNORECASE),
+        re.compile(r'standard charte', re.IGNORECASE),
+        re.compile(r'logo', re.IGNORECASE),
+        re.compile(r'podcast', re.IGNORECASE),
+        re.compile(r'Listen', re.IGNORECASE),
+        re.compile(r'scan code', re.IGNORECASE),
+        re.compile(r'barclays', re.IGNORECASE)
+    ]
+
+    # --- Removal Pass 1: Text-based junk containers ---
+    # This new logic finds all text, then removes the parent container
+    all_text_nodes = soup.find_all(string=True)
+    for text_node in all_text_nodes:
+        should_remove = False
+        for pattern in removal_patterns:
+            if pattern.search(text_node):
+                should_remove = True
+                break
+        
+        if should_remove:
+            parent_to_remove = None
+            current = text_node.find_parent()
+            while current:
+                if current.name in ['tr', 'p', 'div', 'table']:
+                    parent_to_remove = current
+                    break
+                if current.name == 'body':
+                    break
+                current = current.find_parent()
+            
+            if parent_to_remove:
+                parent_to_remove.decompose()
+
+    # --- Removal Pass 2: Image-based junk (logos, spacers) ---
+    for img_tag in soup.find_all('img'):
+        alt_text = img_tag.get('alt', '')
+        src_text = img_tag.get('src', '')
+        is_junk = False
+        
+        for pattern in logo_alt_patterns:
+            if pattern.search(alt_text) or pattern.search(src_text):
+                is_junk = True
+                break
+        
+        style = img_tag.get('style', '')
+        if 'width: 1px' in style or 'height: 1px' in style or 'width: 0px' in style:
+            is_junk = True
+        if img_tag.get('width') in ['1', '0'] or img_tag.get('height') in ['1', '0']:
+            is_junk = True
+        
+        if is_junk:
+            img_tag.decompose()
+
+    return str(soup)
 
 
 
@@ -404,7 +516,8 @@ def process_emails(email_source, source_type, email_theme=None):
                 
                 with Message(tmp.name) as msg:
                     subject = msg.subject
-                    plain_body = msg.body
+                    # ⭐️ CLEAN THE PLAIN TEXT BEFORE SENDING TO LLM
+                    plain_body = clean_plain_text_for_llm(msg.body)
                     
                     # === IMPROVED HTML BODY PROCESSING ===
                     html_body_content = msg.htmlBody
@@ -442,8 +555,12 @@ def process_emails(email_source, source_type, email_theme=None):
             
             elif source_type == 'outlook':
                 subject = item.get('subject', 'No Subject')
-                plain_body = item.get('body', {}).get('content', '')
-                raw_html_body = plain_body
+                # ⭐️ CLEAN THE PLAIN TEXT BEFORE SENDING TO LLM
+                plain_body = clean_plain_text_for_llm(item.get('body', {}).get('content', ''))
+                raw_html_body = item.get('body', {}).get('content', '')
+
+            # ⭐️ CLEAN THE HTML *BEFORE* SAVING TO DATABASE
+            raw_html_body = clean_html_for_database(raw_html_body)
                 
             if blob_name:
                 status_container.info(f"📤 Saved original email")
@@ -457,6 +574,7 @@ def process_emails(email_source, source_type, email_theme=None):
             status_container.warning(f"Skipping an email due to parsing error.")
             continue
         
+        # ⭐️ Use the *already-cleaned* plain_body for the LLM
         extracted = extract_info_with_chatgpt(subject, plain_body, master_brokers)
         if not (extracted and "reports" in extracted): continue
 
