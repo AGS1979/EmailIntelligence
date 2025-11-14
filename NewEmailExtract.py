@@ -340,173 +340,9 @@ def scan_outlook_emails(user_id, token, sender_domain=None):
         st.error(f"Error fetching emails: {e}"); st.json(e.response.json())
         return None
 
-def parse_and_clean_html_for_docx(html_string, temp_dir, msg_file_path=None):
-    if not html_string:
-        return ""
-        
-    soup = BeautifulSoup(html_string, 'html.parser')
 
-    # --- Remove known junk/boilerplate elements ---
-    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
-    for element in caution_elements:
-        parent_container = element.find_parent('table') or element.find_parent('div')
-        if parent_container:
-            parent_container.decompose()
 
-    # --- Extract the main content section ---
-    main_content = soup.find('div', class_='WordSection1')
-    if not main_content:
-        main_content = soup.body if soup.body else soup
-    if not main_content:
-        return "" 
 
-    # --- Process all image tags to create local file paths ---
-    for img_tag in main_content.find_all('img'):
-        src = img_tag.get('src')
-        if not src:
-            img_tag.decompose()
-            continue
-        
-        # --- Handle Base64 encoded images ---
-        if src.startswith('data:image'):
-            try:
-                header, encoded = src.split(',', 1)
-                img_type = header.split(';')[0].split('/')[1]
-                img_data = base64.b64decode(encoded)
-                img_filename = f"{uuid.uuid4()}.{img_type}"
-                temp_img_path = os.path.join(temp_dir, img_filename)
-                
-                with open(temp_img_path, "wb") as f:
-                    f.write(img_data)
-                
-                img_tag['src'] = temp_img_path
-            except Exception as e:
-                st.warning(f"Could not process a Base64 image: {e}")
-                img_tag.decompose()
-
-        # --- Handle CID embedded images (from .msg file) ---
-        elif src.startswith('cid:') and msg_file_path:
-            try:
-                with Message(msg_file_path) as msg:
-                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
-                    cid = src[4:]
-                    
-                    if cid in cid_attachments:
-                        attachment = cid_attachments[cid]
-                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
-                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                        
-                        with open(temp_img_path, "wb") as f:
-                            f.write(attachment.data)
-                        img_tag['src'] = temp_img_path
-                    else:
-                        img_tag.decompose()
-
-            except Exception as e:
-                st.warning(f"Could not process CID image '{src}': {e}")
-                img_tag.decompose()
-
-    # Return the cleaned HTML as a string
-    return str(main_content)
-
-def parse_and_clean_html_for_docx_improved(html_string, temp_dir, msg_file_path=None):
-    """
-    Improved version that handles images and prevents cutoff in Word documents
-    """
-    if not html_string:
-        return ""
-        
-    soup = BeautifulSoup(html_string, 'html.parser')
-
-    # --- Remove known junk/boilerplate elements ---
-    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
-    for element in caution_elements:
-        parent_container = element.find_parent('table') or element.find_parent('div')
-        if parent_container:
-            parent_container.decompose()
-
-    # --- Extract the main content section ---
-    main_content = soup.find('div', class_='WordSection1')
-    if not main_content:
-        main_content = soup.body if soup.body else soup
-    if not main_content:
-        return ""
-
-    # --- Process all image tags to create local file paths ---
-    for img_tag in main_content.find_all('img'):
-        src = img_tag.get('src')
-        if not src:
-            img_tag.decompose()
-            continue
-        
-        # --- Handle Base64 encoded images ---
-        if src.startswith('data:image'):
-            try:
-                header, encoded = src.split(',', 1)
-                img_type = header.split(';')[0].split('/')[1]
-                img_data = base64.b64decode(encoded)
-                img_filename = f"{uuid.uuid4()}.{img_type}"
-                temp_img_path = os.path.join(temp_dir, img_filename)
-                
-                with open(temp_img_path, "wb") as f:
-                    f.write(img_data)
-                
-                img_tag['src'] = temp_img_path
-                
-                # FIX 2: Add styling to prevent image cutoff
-                if img_tag.get('style'):
-                    img_tag['style'] = img_tag['style'] + '; max-width: 100%; height: auto;'
-                else:
-                    img_tag['style'] = 'max-width: 100%; height: auto;'
-                
-            except Exception as e:
-                st.warning(f"Could not process a Base64 image: {e}")
-                img_tag.decompose()
-
-        # --- Handle CID embedded images (from .msg file) ---
-        elif src.startswith('cid:') and msg_file_path:
-            try:
-                with Message(msg_file_path) as msg:
-                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
-                    cid = src[4:]
-                    
-                    if cid in cid_attachments:
-                        attachment = cid_attachments[cid]
-                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
-                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                        
-                        with open(temp_img_path, "wb") as f:
-                            f.write(attachment.data)
-                        img_tag['src'] = temp_img_path
-                        
-                        # FIX 2: Add styling to prevent image cutoff
-                        if img_tag.get('style'):
-                            img_tag['style'] = img_tag['style'] + '; max-width: 100%; height: auto;'
-                        else:
-                            img_tag['style'] = 'max-width: 100%; height: auto;'
-                    else:
-                        img_tag.decompose()
-
-            except Exception as e:
-                st.warning(f"Could not process CID image '{src}': {e}")
-                img_tag.decompose()
-
-    # --- Fix table layouts to prevent cutoff ---
-    for table in main_content.find_all('table'):
-        # Remove fixed widths that might cause cutoff
-        if table.has_attr('width'):
-            del table['width']
-        if table.has_attr('style'):
-            # Remove fixed width from style and add responsive styling
-            style = table['style']
-            style = re.sub(r'width\s*:\s*\d+px\s*;?', '', style)
-            style = re.sub(r'width\s*:\s*\d+%\s*;?', '', style)
-            table['style'] = style + '; width: 100%;'
-        else:
-            table['style'] = 'width: 100%;'
-
-    # Return the cleaned HTML as a string
-    return str(main_content)
 
 
 def extract_info_with_chatgpt(subject, body, master_brokers):
@@ -682,205 +518,86 @@ def generate_sas_url(container_name, blob_name):
     except Exception:
         return None
 
-def parse_and_clean_html_for_docx_final(html_string, temp_dir, msg_file_path=None):
+# ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
+def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
     """
-    Enhanced version that specifically handles table images and prevents cutoff
-    """
-    if not html_string:
-        return ""
-        
-    soup = BeautifulSoup(html_string, 'html.parser')
-
-    # --- Remove known junk/boilerplate elements ---
-    caution_elements = soup.find_all(text=re.compile(r'CAUTION: This email has been sent from outside'))
-    for element in caution_elements:
-        parent_container = element.find_parent('table') or element.find_parent('div')
-        if parent_container:
-            parent_container.decompose()
-
-    # --- Extract the main content section ---
-    main_content = soup.find('div', class_='WordSection1')
-    if not main_content:
-        main_content = soup.body if soup.body else soup
-    if not main_content:
-        return ""
-
-    # --- Process all image tags to prevent cutoff ---
-    for img_tag in main_content.find_all('img'):
-        src = img_tag.get('src')
-        if not src:
-            img_tag.decompose()
-            continue
-        
-        # FIX 1: Remove all problematic attributes that cause Word to misrender images
-        for attr in ['width', 'height', 'style', 'border', 'align']:
-            if img_tag.has_attr(attr):
-                del img_tag[attr]
-        
-        # FIX 2: Add CSS specifically optimized for Word compatibility
-        img_tag['style'] = 'max-width: 100%; height: auto; display: block; margin: 0 auto;'
-        
-        # --- Handle Base64 encoded images ---
-        if src.startswith('data:image'):
-            try:
-                header, encoded = src.split(',', 1)
-                img_type = header.split(';')[0].split('/')[1]
-                img_data = base64.b64decode(encoded)
-                img_filename = f"{uuid.uuid4()}.{img_type}"
-                temp_img_path = os.path.join(temp_dir, img_filename)
-                
-                with open(temp_img_path, "wb") as f:
-                    f.write(img_data)
-                
-                img_tag['src'] = temp_img_path
-                
-            except Exception as e:
-                st.warning(f"Could not process a Base64 image: {e}")
-                img_tag.decompose()
-
-        # --- Handle CID embedded images (from .msg file) ---
-        elif src.startswith('cid:') and msg_file_path:
-            try:
-                with Message(msg_file_path) as msg:
-                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
-                    cid = src[4:]
-                    
-                    if cid in cid_attachments:
-                        attachment = cid_attachments[cid]
-                        safe_img_filename = re.sub(r'[\\/*?:"<>|]', "", attachment.longFilename or f"{cid}.tmp")
-                        temp_img_path = os.path.join(temp_dir, safe_img_filename)
-                        
-                        with open(temp_img_path, "wb") as f:
-                            f.write(attachment.data)
-                        img_tag['src'] = temp_img_path
-                    else:
-                        img_tag.decompose()
-
-            except Exception as e:
-                st.warning(f"Could not process CID image '{src}': {e}")
-                img_tag.decompose()
-
-    # --- Fix table layouts to prevent cutoff ---
-    for table in main_content.find_all('table'):
-        # Remove problematic attributes that cause table cutoff
-        for attr in ['width', 'style', 'border', 'cellpadding', 'cellspacing']:
-            if table.has_attr(attr):
-                del table[attr]
-        
-        # FIX 3: Add table styling optimized for Word
-        table['style'] = 'width: 100%; border-collapse: collapse; table-layout: fixed;'
-
-    # FIX 4: Add a responsive container with proper Word margins
-    if main_content.find():
-        container_div = soup.new_tag('div')
-        container_div['style'] = 'width: 100%; max-width: 100%; margin: 0; padding: 0; line-height: 1.2;'
-        
-        # Move all content into the container
-        for element in list(main_content.contents):
-            container_div.append(element)
-        
-        main_content.clear()
-        main_content.append(container_div)
-
-    return str(main_content)
-
-
-def crop_image_whitespace(image_bytes: bytes) -> bytes:
-    """
-    Crops whitespace from an image using Pillow, assuming a WHITE background.
-    """
-    try:
-        image = Image.open(io.BytesIO(image_bytes))
-
-        # Create a solid white background of the same mode and size
-        if image.mode == 'RGBA':
-            # If it has alpha, use the alpha channel's bounding box
-            bbox = image.getbbox()
-        else:
-            # Assume white background for other modes
-            original_mode = image.mode
-            if image.mode == 'L':  # Grayscale
-                bg = Image.new(image.mode, image.size, 255)
-            elif image.mode == 'P':  # Palette
-                # Convert to RGB to handle it
-                image = image.convert('RGB')
-                bg = Image.new(image.mode, image.size, (255, 255, 255))
-            else:  # Assume RGB
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                bg = Image.new(image.mode, image.size, (255, 255, 255))
-        
-            # Find the difference between the image and the solid white background
-            diff = ImageChops.difference(image, bg)
-
-            # Get the bounding box of the non-white area
-            bbox = diff.getbbox()
-
-        if bbox:
-            # Crop the image to this bounding box, adding a small padding
-            padding = 5  # 5px padding is a bit safer than 10px
-            cropped_bbox = (
-                max(0, bbox[0] - padding),
-                max(0, bbox[1] - padding),
-                min(image.width, bbox[2] + padding),
-                min(image.height, bbox[3] + padding)
-            )
-            cropped_image = image.crop(cropped_bbox)
-
-            # Save the cropped image to a new byte buffer
-            buffer = io.BytesIO()
-            # Preserve original format if possible, default to PNG
-            image_format = image.format or 'PNG' 
-            
-            # If we converted from Palette, we must save as PNG/JPEG
-            if original_mode == 'P':
-                 image_format = 'PNG'
-            
-            # Handle formats that PIL can't save (like 'MPO')
-            try:
-                cropped_image.save(buffer, format=image_format)
-            except KeyError:
-                cropped_image.save(buffer, format='PNG')
-                
-            return buffer.getvalue()
-        else:
-            # No difference found (image is solid white)
-            return image_bytes
-            
-    except Exception as e:
-        # If any error occurs, fallback to the original image to prevent crashes
-        st.warning(f"Failed to crop whitespace from image: {e}")
-        return image_bytes
-
-def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path=None):
-    """
-    Final version: Crops image whitespace with Pillow and then scales the result
-    to fit the Word document page.
+    Aggressively cleans HTML by removing known junk, disclaimers, and signatures
+    before processing images for Word export.
     """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
-    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
-    if not main_content:
-        return ""
+    
+    # --- Define keywords for removal ---
+    caution_keywords = [re.compile(r'CAUTION: This email has been sent from outside', re.IGNORECASE)]
+    signature_keywords = [
+        re.compile(r'Regards', re.IGNORECASE),
+        re.compile(r'Best regards', re.IGNORECASE),
+        re.compile(r'Vishal Kumar Manoria', re.IGNORECASE),
+        re.compile(r'Senior Manager', re.IGNORECASE),
+        re.compile(r'Investment Research', re.IGNORECASE),
+        re.compile(r'Aranca', re.IGNORECASE),
+        re.compile(r'LinkedIn', re.IGNORECASE),
+        re.compile(r'YouTube', re.IGNORECASE)
+    ]
+    disclaimer_keywords = [
+        re.compile(r'unsubscribe', re.IGNORECASE),
+        re.compile(r'confidential', re.IGNORECASE),
+        re.compile(r'This email and any attachments', re.IGNORECASE),
+        re.compile(r'intended only for the use of the individual', re.IGNORECASE)
+    ]
+    logo_alt_texts = [
+        re.compile(r'aranca', re.IGNORECASE),
+        re.compile(r'standard chartered', re.IGNORECASE),
+        re.compile(r'logo', re.IGNORECASE)
+    ]
 
-    for img_tag in main_content.find_all('img'):
+    all_keywords = caution_keywords + signature_keywords + disclaimer_keywords
+
+    # --- Remove text elements and their parents ---
+    for keyword in all_keywords:
+        elements = soup.find_all(text=keyword)
+        for element in elements:
+            # Find the most likely "junk" container (table, div, or p) and remove it
+            parent = element.find_parent('table') or element.find_parent('div') or element.find_parent('p')
+            if parent:
+                parent.decompose()
+
+    # --- Remove images that are likely logos ---
+    for img_tag in soup.find_all('img'):
+        alt_text = img_tag.get('alt', '')
+        src_text = img_tag.get('src', '')
+        
+        is_logo = False
+        for pattern in logo_alt_texts:
+            if pattern.search(alt_text):
+                is_logo = True
+                break
+        
+        # Also check src for logo keywords
+        if not is_logo and 'logo' in src_text.lower():
+            is_logo = True
+            
+        if is_logo:
+            img_tag.decompose()
+            continue # Skip to next image if this one was decomposed
+            
+        # --- Process remaining images (Charts, etc.) ---
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
         
-        # Remove any conflicting style or size attributes from the HTML tag
+        # Reset styles to prevent Word from breaking layout
         for attr in ['width', 'height', 'style', 'border', 'align', 'class']:
             if img_tag.has_attr(attr):
                 del img_tag[attr]
-        
         img_tag['style'] = 'width: 100%; max-width: 100%; height: auto; display: block;'
         
         image_data = None
         
-        # --- Handle Base64 encoded images ---
+        # Handle Base64
         if src.startswith('data:image'):
             try:
                 header, encoded = src.split(',', 1)
@@ -889,8 +606,7 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                 st.warning(f"Could not decode a Base64 image: {e}")
                 img_tag.decompose()
                 continue
-
-        # --- Handle CID embedded images (from .msg file) ---
+        # Handle CID
         elif src.startswith('cid:') and msg_file_path:
             try:
                 with Message(msg_file_path) as msg:
@@ -907,17 +623,29 @@ def parse_and_clean_html_for_docx_landscape(html_string, temp_dir, msg_file_path
                 continue
         
         if image_data:
-            cropped_data = image_data  # <-- Use the original data!
-
-            img_type = Image.open(io.BytesIO(cropped_data)).format.lower() or 'png'
-            img_filename = f"{uuid.uuid4()}.{img_type}"
-            temp_img_path = os.path.join(temp_dir, img_filename)
-            
-            with open(temp_img_path, "wb") as f:
-                f.write(cropped_data)
+            try:
+                img_type = Image.open(io.BytesIO(image_data)).format.lower() or 'png'
+                img_filename = f"{uuid.uuid4()}.{img_type}"
+                temp_img_path = os.path.join(temp_dir, img_filename)
                 
-            img_tag['src'] = temp_img_path
+                with open(temp_img_path, "wb") as f:
+                    f.write(image_data)
+                    
+                img_tag['src'] = temp_img_path
+            except Exception as img_e:
+                st.warning(f"Failed to process and save image: {img_e}")
+                img_tag.decompose()
 
+    # --- Fix table layouts ---
+    for table in soup.find_all('table'):
+        for attr in ['width', 'style', 'border', 'cellpadding', 'cellspacing']:
+            if table.has_attr(attr):
+                del table[attr]
+        table['style'] = 'width: 100%; border-collapse: collapse; table-layout: fixed;'
+
+    # Find main content body if possible
+    main_content = soup.find('div', class_='WordSection1') or soup.body or soup
+    
     return str(main_content)
 
 
@@ -1074,122 +802,140 @@ def main():
                     mime="application/octet-stream"
                 )
             
-                # --- FIXED WORD DOCUMENT GENERATION ---
+                # ⭐️ --- NEW WORD DOCUMENT GENERATION LOGIC --- ⭐️
                 st.write("---") 
                 st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
+                
+                # ⭐️ ADDED NEW UI OPTION
+                download_format = st.radio(
+                    "Select download content:",
+                    ["Text, Charts, and Tables", "Text Only"],
+                    key="download_format_radio"
+                )
+
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     with st.spinner("Generating Word document... This may take a moment."):
-                        with tempfile.TemporaryDirectory() as temp_dir:
-                            # Create HTML with landscape orientation support
-                            all_html_parts = [
-                                '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-                                # Enhanced CSS for wide tables and landscape support
-                                '<style>',
-                                '@page { margin: 0.5in; size: landscape; }',  # FIX: Force landscape for entire document
-                                'body { margin: 0.5in; font-family: "Calibri", sans-serif; font-size: 10pt; }',
-                                'img { max-width: 10in !important; height: auto !important; display: block !important; margin: 0 auto !important; page-break-inside: avoid; }',
-                                'table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; }',
-                                '.wide-container { width: 100%; overflow-x: visible; }',
-                                '.email-divider { border-top: 3px solid #1e70bf; margin: 20px 0; padding: 10px; background: #f8fafc; }',
-                                '.email-header { background: #e8f0fe; padding: 12px; margin-bottom: 12px; border-left: 4px solid #1e70bf; }',
-                                '.landscape-section { width: 100%; max-width: 100%; }',
-                                '</style>',
-                                '</head><body>',
-                                '<div class="wide-container">',
-                                f"<h1>Filtered Email Intelligence Report</h1>",
-                                f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
-                                f"<p>Total Emails: {len(filtered_df)}</p>"
-                            ]
+                        
+                        df_for_export = filtered_df.copy()
+                        if 'processedat' in df_for_export.columns:
+                            df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
-                            df_for_export = filtered_df.copy()
-                            if 'processedat' in df_for_export.columns:
-                                df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
-
-                            for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                # Clear demarcation between emails
-                                if i > 0:
-                                    all_html_parts.append('<div class="email-divider">')
-                                    all_html_parts.append(f'<h3 style="color: #1e70bf; margin: 0;">--- Email {i+1} of {len(df_for_export)} ---</h3>')
-                                    all_html_parts.append('</div>')
+                        try:
+                            with tempfile.TemporaryDirectory() as temp_dir:
                                 
-                                all_html_parts.append('<div class="landscape-section">')  # FIX: Wrap in landscape container
-                                all_html_parts.append('<div class="email-header">')
-                                all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
-                                all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
-                                date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
-                                
-                                # ⭐️ CHANGE: Added EmailTheme to the Word doc header
-                                theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
-                                all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
-                                all_html_parts.append('</div>')
-                                
-                                original_html = row.get('emailcontent', '<p>No content available.</p>')
-
-                                # Handle hexadecimal encoded content from database
-                                if isinstance(original_html, str) and original_html.startswith('\\x'):
-                                    try:
-                                        hex_string = original_html.replace('\\x', '')
-                                        decoded_bytes = bytes.fromhex(hex_string)
-                                        original_html = decoded_bytes.decode('utf-8', errors='ignore')
-                                        st.success(f"✅ Successfully decoded hexadecimal content for email {i+1}")
-                                    except Exception as hex_decode_error:
-                                        st.warning(f"Failed to decode hexadecimal content for email {i+1}: {hex_decode_error}")
-                                        original_html = f"<pre>Hexadecimal content could not be decoded: {original_html[:500]}...</pre>"
-
-                                blob_name = row.get('blob_name')
-                                tmp_msg_path = None
-                                
-                                if blob_name and pd.notna(blob_name):
-                                    try:
-                                        blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
-                                        msg_bytes = blob_client.download_blob().readall()
-                                        fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
-                                        with os.fdopen(fd, 'wb') as tmp_file:
-                                            tmp_file.write(msg_bytes)
-                                    except Exception as e:
-                                        st.warning(f"Could not retrieve .msg file {blob_name} for image processing. Error: {e}")
-                                
-                                # Use the enhanced HTML cleaning function
-                                cleaned_html = parse_and_clean_html_for_docx_landscape(original_html, temp_dir, tmp_msg_path)
-                                all_html_parts.append(cleaned_html)
-                                all_html_parts.append('</div>')  # Close landscape-section
-                                
-                                # Add page break between emails
-                                if i < len(df_for_export) - 1:
-                                    all_html_parts.append('<div style="page-break-before: always;"></div>')
-
-                            all_html_parts.append('</div></body></html>')
-                            full_html_content = "".join(all_html_parts)
-
-                            try:
-                                output_filename = os.path.join(temp_dir, "output.docx")
-                                
-                                # FIX: Use smaller margins to maximize horizontal space for wide tables/images
-                                pypandoc.convert_text(
-                                    full_html_content,
-                                    'docx',
-                                    format='html',
-                                    outputfile=output_filename,
-                                    extra_args=[
-                                        f'--resource-path={temp_dir}',
-                                        '--wrap=none',
-                                        '--standalone',
-                                        '-V', 'geometry:landscape',
-                                        # CHANGE THIS LINE: Use smaller 0.25in margins instead of 0.5in
-                                        '-V', 'geometry:margin=0.25in' 
+                                # ⭐️ --- OPTION 1: TEXT, CHARTS, AND TABLES (PANDOC METHOD) --- ⭐️
+                                if download_format == "Text, Charts, and Tables":
+                                    all_html_parts = [
+                                        '<!DOCTYPE html><html><head><meta charset="UTF-8">',
+                                        '<style>',
+                                        '@page { margin: 0.5in; size: landscape; }',
+                                        'body { margin: 0.5in; font-family: "Calibri", sans-serif; font-size: 10pt; }',
+                                        'img { max-width: 10in !important; height: auto !important; display: block !important; margin: 0 auto !important; page-break-inside: avoid; }',
+                                        'table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; }',
+                                        '.email-header { background: #e8f0fe; padding: 12px; margin-bottom: 12px; border-left: 4px solid #1e70bf; }',
+                                        '</style>',
+                                        '</head><body>',
+                                        f"<h1>Filtered Email Intelligence Report</h1>",
+                                        f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
+                                        f"<p>Total Emails: {len(df_for_export)}</p>"
                                     ]
-                                )
-                                
-                                with open(output_filename, "rb") as f:
-                                    output_docx_bytes = f.read()
 
-                                st.session_state['word_data'] = output_docx_bytes
-                                st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                                st.success("✅ Word document generated successfully!")
+                                    for i, (index, row) in enumerate(df_for_export.iterrows()):
+                                        if i > 0:
+                                            all_html_parts.append('<div style="page-break-before: always;"></div>')
 
-                            except Exception as e:
-                                st.error(f"Failed to generate Word document. Error: {e}")
-                                # For debugging, you can write the problematic HTML to a file
+                                        # --- Add the standard header ---
+                                        all_html_parts.append('<div class="email-header">')
+                                        all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
+                                        all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
+                                        date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
+                                        theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
+                                        all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
+                                        all_html_parts.append('</div>')
+                                        
+                                        original_html = row.get('emailcontent', '<p>No content available.</p>')
+                                        
+                                        # --- Get .msg file path for image extraction ---
+                                        blob_name = row.get('blob_name')
+                                        tmp_msg_path = None
+                                        if blob_name and pd.notna(blob_name):
+                                            try:
+                                                blob_client = blob_service_client.get_blob_client(AZURE_CONTAINER_NAME, blob_name)
+                                                msg_bytes = blob_client.download_blob().readall()
+                                                fd, tmp_msg_path = tempfile.mkstemp(suffix=".msg", dir=temp_dir)
+                                                with os.fdopen(fd, 'wb') as tmp_file:
+                                                    tmp_file.write(msg_bytes)
+                                            except Exception as e:
+                                                st.warning(f"Could not retrieve .msg file {blob_name}: {e}")
+                                        
+                                        # ⭐️ USE THE NEW AGGRESSIVE CLEANING FUNCTION
+                                        cleaned_html = clean_html_for_export(original_html, temp_dir, tmp_msg_path)
+                                        all_html_parts.append(cleaned_html)
+
+                                    all_html_parts.append('</body></html>')
+                                    full_html_content = "".join(all_html_parts)
+
+                                    output_filename = os.path.join(temp_dir, "output.docx")
+                                    
+                                    pypandoc.convert_text(
+                                        full_html_content,
+                                        'docx',
+                                        format='html',
+                                        outputfile=output_filename,
+                                        extra_args=[
+                                            f'--resource-path={temp_dir}',
+                                            '--wrap=none',
+                                            '--standalone',
+                                            '-V', 'geometry:landscape',
+                                            '-V', 'geometry:margin=0.5in' # Using 0.5in margin
+                                        ]
+                                    )
+                                    
+                                    with open(output_filename, "rb") as f:
+                                        output_docx_bytes = f.read()
+
+                                # ⭐️ --- OPTION 2: TEXT ONLY (PYTHON-DOCX METHOD) --- ⭐️
+                                else: # download_format == "Text Only"
+                                    document = docx.Document()
+                                    doc_io = io.BytesIO()
+
+                                    for i, (index, row) in enumerate(df_for_export.iterrows()):
+                                        if i > 0:
+                                            document.add_page_break()
+                                        
+                                        # --- Add the standard header ---
+                                        document.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=2)
+                                        document.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=3)
+                                        date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
+                                        theme_str = f" | Theme: {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
+                                        p = document.add_paragraph()
+                                        p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
+                                        
+                                        # --- Clean and add text content ---
+                                        original_html = row.get('emailcontent', '')
+                                        
+                                        # Use the *same* aggressive cleaning function
+                                        # We don't need temp_dir or msg_path since we're stripping images anyway
+                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None) 
+                                        
+                                        soup = BeautifulSoup(cleaned_html, 'html.parser')
+                                        body_text = soup.get_text(separator='\n', strip=True)
+                                        
+                                        # Add the cleaned text
+                                        document.add_paragraph(body_text)
+
+                                    document.save(doc_io)
+                                    output_docx_bytes = doc_io.getvalue()
+
+                            # --- Set session state for download ---
+                            st.session_state['word_data'] = output_docx_bytes
+                            st.session_state['word_filename'] = f"email_content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                            st.success("✅ Word document generated successfully!")
+
+                        except Exception as e:
+                            st.error(f"Failed to generate Word document. Error: {e}")
+                            # For debugging, you can write the problematic HTML to a file
+                            if 'full_html_content' in locals():
                                 with open(os.path.join(temp_dir, "debug.html"), "w", encoding="utf-8") as f:
                                     f.write(full_html_content)
                                 st.info("A 'debug.html' file has been saved in the temp directory for inspection.")
