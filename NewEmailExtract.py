@@ -376,27 +376,51 @@ def clean_html_for_database(html_string):
     
     # Define patterns for removal
     removal_patterns = [
+        # --- Junk text artifacts ---
+        re.compile(r'The following table:', re.IGNORECASE),
+        re.compile(r'^\s*Just text\s*$', re.IGNORECASE),
+        
+        # --- Classification/Warnings ---
         re.compile(r'CAUTION: This email has been sent from outside', re.IGNORECASE),
         re.compile(r'This is classified as Wisayah', re.IGNORECASE),
         re.compile(r'Classification: Wisayah', re.IGNORECASE),
-        re.compile(r'From:.*Sent:.*To:.*Subject:', re.DOTALL | re.IGNORECASE),
         re.compile(r"don't often get email from", re.IGNORECASE),
+        
+        # --- Email Headers (split into individual lines) ---
+        re.compile(r'^\s*From:', re.IGNORECASE),
+        re.compile(r'^\s*Sent:', re.IGNORECASE),
+        re.compile(r'^\s*To:', re.IGNORECASE),
+        re.compile(r'^\s*Subject:', re.IGNORECASE),
+
+        # --- Signatures / Analyst Names ---
         re.compile(r'Regards', re.IGNORECASE),
         re.compile(r'Best regards', re.IGNORECASE),
+        re.compile(r'Eric Robertsen', re.IGNORECASE),
+        re.compile(r'Jordan Isvy', re.IGNORECASE),
+        re.compile(r'Carlos Eduardo Garcia Martinez', re.IGNORECASE),
         re.compile(r'Vishal Kumar Manoria', re.IGNORECASE),
-        re.compile(r'Aranca', re.IGNORECASE),
+        
+        # --- Disclaimers ---
         re.compile(r'LinkedIn', re.IGNORECASE),
         re.compile(r'unsubscribe', re.IGNORECASE),
         re.compile(r'confidential', re.IGNORECASE),
         re.compile(r'This email and any attachments', re.IGNORECASE),
         re.compile(r'intended only for the use of the individual', re.IGNORECASE),
         re.compile(r'Disclosures appendix', re.IGNORECASE),
-        re.compile(r'Copyright \d{4} Standard Chartered', re.IGNORECASE),
+        re.compile(r'Copyright \d{4}', re.IGNORECASE), # More general
         re.compile(r'intended for institutional investors', re.IGNORECASE),
-        re.compile(r'Eric Robertsen', re.IGNORECASE),
-        re.compile(r'Jordan Isvy', re.IGNORECASE),
-        re.compile(r'Carlos Eduardo Garcia Martinez', re.IGNORECASE),
-        re.compile(r'Read Now|Continue Reading|Explore Hub|Read the Report', re.IGNORECASE)
+        re.compile(r'If you are in scope for MiFID II', re.IGNORECASE),
+        re.compile(r'For analyst certifications and important disclosures', re.IGNORECASE),
+        re.compile(r'All rights reserved', re.IGNORECASE),
+        
+        # --- Navigation / Buttons ---
+        re.compile(r'Read Now', re.IGNORECASE),
+        re.compile(r'Continue Reading', re.IGNORECASE),
+        re.compile(r'Explore Hub', re.IGNORECASE),
+        re.compile(r'Read the Report', re.IGNORECASE),
+        re.compile(r'Click the button above to listen', re.IGNORECASE),
+        re.compile(r"Can't open the report\?", re.IGNORECASE),
+        re.compile(r'Scan code to view the report', re.IGNORECASE)
     ]
     
     logo_alt_patterns = [
@@ -410,28 +434,48 @@ def clean_html_for_database(html_string):
     ]
 
     # --- Removal Pass 1: Text-based junk containers ---
-    # This new logic finds all text, then removes the parent container
-    all_text_nodes = soup.find_all(string=True)
+    # Find all text nodes.
+    all_text_nodes = soup(string=True)
+    
+    nodes_to_decompose = set()
+
     for text_node in all_text_nodes:
-        should_remove = False
-        for pattern in removal_patterns:
-            if pattern.search(text_node):
-                should_remove = True
-                break
-        
-        if should_remove:
-            parent_to_remove = None
-            current = text_node.find_parent()
-            while current:
-                if current.name in ['tr', 'p', 'div', 'table']:
-                    parent_to_remove = current
-                    break
-                if current.name == 'body':
-                    break
-                current = current.find_parent()
+        # Strip text for more reliable matching
+        node_text = str(text_node).strip()
+        if not node_text:
+            continue
             
-            if parent_to_remove:
-                parent_to_remove.decompose()
+        for pattern in removal_patterns:
+            if pattern.search(node_text):
+                # Found junk text. Add its container to the removal set.
+                parent_to_remove = None
+                current = text_node.find_parent()
+                
+                while current and current.name != 'body':
+                    # We want to remove the *entire row* or a block-level element.
+                    if current.name in ['tr', 'p', 'div']:
+                        parent_to_remove = current
+                        break
+                    # If it's in a table cell, go up to the row
+                    if current.name == 'td':
+                         row = current.find_parent('tr')
+                         if row:
+                             parent_to_remove = row
+                             break
+                    current = current.find_parent()
+                
+                # If we didn't find a good container, just remove the immediate parent <p>
+                if not parent_to_remove and text_node.find_parent().name == 'p':
+                     parent_to_remove = text_node.find_parent()
+
+                if parent_to_remove:
+                    nodes_to_decompose.add(parent_to_remove)
+                break # Move to the next text node
+
+    # Decompose in a separate loop to avoid modifying the tree while iterating
+    for node in nodes_to_decompose:
+        if node.find_parent(): # Check if it wasn't already decomposed as a child
+            node.decompose()
 
     # --- Removal Pass 2: Image-based junk (logos, spacers) ---
     for img_tag in soup.find_all('img'):
@@ -451,7 +495,21 @@ def clean_html_for_database(html_string):
             is_junk = True
         
         if is_junk:
-            img_tag.decompose()
+            # Also try to remove the parent container (row, link, etc.)
+            parent_to_remove = None
+            current = img_tag.find_parent()
+            while current and current.name != 'body':
+                if current.name in ['tr', 'p', 'div', 'a']:
+                    parent_to_remove = current
+                    break
+                current = current.find_parent()
+            
+            if parent_to_remove:
+                if parent_to_remove.find_parent(): # Check it's not already gone
+                    parent_to_remove.decompose()
+            else:
+                if img_tag.find_parent(): # Check it's not already gone
+                    img_tag.decompose()
 
     return str(soup)
 
