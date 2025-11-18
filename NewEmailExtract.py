@@ -377,19 +377,27 @@ def clean_html_for_database(html_string):
 
 
 
-def extract_info_with_chatgpt(subject, body, master_brokers):
+def extract_info_with_chatgpt(subject, body, master_brokers, email_theme=None):
     broker_list_str = ", ".join(master_brokers)
     
-    prompt = f"""You are an expert financial analyst. From the email below, extract key details for each financial report mentioned.
+    # NEW: Add context if a theme is provided
+    theme_context = ""
+    if email_theme and email_theme != "Select a category...":
+        theme_context = f"The user has pre-categorized this email with the theme: '{email_theme}'. Use this as a strong hint."
+
+    prompt = f"""You are an expert financial analyst. From the email below, extract key details for the financial report.
+    
+    {theme_context}
 
     **Instructions:**
-    1.  **Company:** Extract the name of the company the financial report is about.
-    2.  **Ticker:** Extract the stock Ticker if mentioned.
-    3.  **BrokerName:** You MUST choose the most appropriate name from this list of known brokers: {broker_list_str}. If no suitable broker is mentioned or found, classify it as 'Unknown'.
-    4.  **Category:** High-level classification like 'Equity Research'.
-    5.  **ContentType:** Must be from this specific list: 'Earnings Commentary', 'Earnings Call Commentary', 'Market Update', 'Stock Initiation', 'Other'.
-    6.  **FiscalYear:** The four-digit year the report is about (e.g., 2024, 2025). Look for terms like '4Q24', 'FY25', or '2025 Results'. If not explicitly stated, infer from the email's content. If it cannot be determined, return null.
-    7.  **FiscalQuarter:** The quarter the report is about as a single number (1, 2, 3, or 4). Look for terms like 'Q3', '3Q', 'Third Quarter'. If not explicitly stated, infer from the content. If it cannot be determined, return null.
+    1.  **Report Type:** First, determine if this is a report about a *specific company* OR if it is a *thematic/macro* report (e.g., 'Global Credit Strategy', 'Macro Round-up', 'EM Strategy').
+    2.  **Company:** If it's about a *specific company*, extract its name. If it is a *thematic/macro* report, set the 'Company' to a descriptive title like 'Macro Report', 'Thematic Report', or 'Strategy Note'.
+    3.  **Ticker:** Extract the stock Ticker if it is a specific company report. If it is a *thematic/macro* report, set 'Ticker' to null.
+    4.  **BrokerName:** You MUST choose the most appropriate name from this list of known brokers: {broker_list_str}. If no suitable broker is mentioned or found, classify it as 'Unknown'.
+    5.  **Category:** High-level classification like 'Equity Research', 'Macro Research', 'Credit Strategy'.
+    6.  **ContentType:** Must be from this specific list: 'Earnings Commentary', 'Earnings Call Commentary', 'Market Update', 'Stock Initiation', 'Thematic Note', 'Strategy Note', 'Macro Note', 'Other'.
+    7.  **FiscalYear:** The four-digit year the report is about (e.g., 2024, 2025). Look for terms like '4Q24', 'FY25', or '2025 Results'. If not explicitly stated, infer from the email's content. If it cannot be determined, return null.
+    8.  **FiscalQuarter:** The quarter the report is about as a single number (1, 2, 3, or 4). Look for terms like 'Q3', '3Q', 'Third Quarter'. If not explicitly stated, infer from the content. If it cannot be determined, return null.
 
     **Email Details:**
     - EMAIL SUBJECT: {subject}
@@ -398,8 +406,9 @@ def extract_info_with_chatgpt(subject, body, master_brokers):
     {body[:8000]}
     ---
     
-    Provide the output in a JSON object with a single key "reports", which is a list.
-    Example: {{"reports": [{{"Country": "USA", "Sector": "Technology", "Company": "Example Corp", "Ticker": "EXMPL", "Category": "Equity Research", "ContentType": "Earnings Commentary", "BrokerName": "Global Brokerage", "FiscalYear": 2025, "FiscalQuarter": 3}}]}}"""
+    Provide the output in a JSON object with a single key "reports", which is a list. Even if it's a macro report, it should be one entry in the list.
+    Example (Company Report): {{"reports": [{{"Country": "USA", "Sector": "Technology", "Company": "Example Corp", "Ticker": "EXMPL", "Category": "Equity Research", "ContentType": "Earnings Commentary", "BrokerName": "Global Brokerage", "FiscalYear": 2025, "FiscalQuarter": 3}}]}}
+    Example (Macro Report): {{"reports": [{{"Country": "Global", "Sector": "Macro", "Company": "Macro Report", "Ticker": null, "Category": "Macro Research", "ContentType": "Macro Note", "BrokerName": "Global Brokerage", "FiscalYear": null, "FiscalQuarter": null}}]}}"""
     try:
         response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "You are a helpful assistant designed to output JSON."}, {"role": "user", "content": prompt}], response_format={"type": "json_object"})
         return json.loads(response.choices[0].message.content)
@@ -496,7 +505,7 @@ def process_emails(email_source, source_type, email_theme=None):
         
         # ⭐️ Use the *already-cleaned* plain_body for the LLM
         
-        extracted = extract_info_with_chatgpt(subject, plain_body, master_brokers)
+        extracted = extract_info_with_chatgpt(subject, plain_body, master_brokers, email_theme)
 
         # --- START OF NEW DEBUG CODE ---
         if not extracted or "reports" not in extracted or not extracted["reports"]:
