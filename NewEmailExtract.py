@@ -993,6 +993,11 @@ def main():
                                     
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
+                                        # --- BRUTE-FORCE NONE CHECK ---
+                                        if row is None:
+                                            st.warning(f"Skipping one empty/corrupted row (index {i}).")
+                                            continue
+                                        # --- END FIX ---
                                         # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
@@ -1060,6 +1065,11 @@ def main():
                                     
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
+                                        # --- BRUTE-FORCE NONE CHECK ---
+                                        if row is None:
+                                            st.warning(f"Skipping one empty/corrupted row (index {i}).")
+                                            continue
+                                        # --- END FIX ---
                                         # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
