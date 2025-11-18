@@ -986,6 +986,11 @@ def main():
                                     ]
 
                                     for i, (index, row) in enumerate(df_for_export.iterrows()):
+                                        # --- FIX 1: Skip if row is bad ---
+                                        if row is None:
+                                            continue
+                                        # --- END FIX ---
+
                                         if i > 0:
                                             all_html_parts.append('<div style="page-break-before: always;"></div>')
 
@@ -998,9 +1003,11 @@ def main():
                                         all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
                                         all_html_parts.append('</div>')
                                         
-                                        original_html = row.get('emailcontent')
-                                        if not original_html:
+                                        # --- FIX 2: More robust default for html ---
+                                        original_html = row.get('emailcontent', '<p>No content available.</p>') # Default 1
+                                        if not original_html: # Default 2 (for None or empty string)
                                             original_html = '<p>No content available.</p>'
+                                        # --- END FIX ---
                                         
                                         # --- Get .msg file path for image extraction ---
                                         blob_name = row.get('blob_name')
@@ -1047,6 +1054,11 @@ def main():
                                     doc_io = io.BytesIO()
 
                                     for i, (index, row) in enumerate(df_for_export.iterrows()):
+                                        # --- FIX 1: Skip if row is bad ---
+                                        if row is None:
+                                            continue
+                                        # --- END FIX ---
+
                                         if i > 0:
                                             document.add_page_break()
                                         
@@ -1059,14 +1071,13 @@ def main():
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
                                         
                                         # --- Clean and add text content ---
-                                        original_html = row.get('emailcontent')
+                                        original_html = row.get('emailcontent', '') # Default 1
                                         if not original_html:
                                             original_html = '' # Keep as empty string for text only
                                         
                                         # Use the *same* aggressive cleaning function
                                         # We don't need temp_dir or msg_path since we're stripping images anyway
-                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None) 
-                                        
+                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None)                                        
                                         soup = BeautifulSoup(cleaned_html, 'html.parser')
                                         body_text = soup.get_text(separator='\n', strip=True)
                                         
