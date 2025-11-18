@@ -947,16 +947,7 @@ def main():
                     mime="application/octet-stream"
                 )
             
-                # ⭐️ --- NEW WORD DOCUMENT GENERATION LOGIC --- ⭐️
-                st.write("---") 
-                st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
                 
-                # ⭐️ ADDED NEW UI OPTION
-                download_format = st.radio(
-                    "Select download content:",
-                    ["Text, Charts, and Tables", "Text Only"],
-                    key="download_format_radio"
-                )
 
                 # ⭐️ --- REWORKED WORD DOCUMENT GENERATION LOGIC --- ⭐️
                 st.write("---") 
