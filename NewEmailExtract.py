@@ -1050,7 +1050,8 @@ def main():
                                         all_html_parts.append('</div>')
 
                                         # Safe HTML fallback
-                                        original_html = row.get('emailcontent') or '<p>No content available.</p>'
+                                        original_text = row.get('originalemail') or '<p>No content available.</p>'
+                                        cleaned_html = f"<p>{original_text.strip().replace('\n', '<br>')}</p>"
 
                                         # Blob extraction (optional)
                                         blob_name = row.get('blob_name')
@@ -1065,7 +1066,7 @@ def main():
                                             except Exception as e:
                                                 st.warning(f"Could not retrieve .msg file {blob_name}: {e}")
 
-                                        cleaned_html = clean_html_for_export(original_html, temp_dir, tmp_msg_path)
+                                        # You can skip aggressive cleaning since we're using plain text
                                         all_html_parts.append(cleaned_html)
 
 
@@ -1122,11 +1123,12 @@ def main():
                                         p = document.add_paragraph()
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')} | Content Type: {row.get('contenttype', 'N/A')}{theme_str}").bold = True
 
-                                        original_html = row.get('emailcontent') or ''
-                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None)
-                                        soup = BeautifulSoup(cleaned_html, 'html.parser')
-                                        body_text = soup.get_text(separator='\n', strip=True)
-                                        document.add_paragraph(body_text)
+                                        original_text = row.get('originalemail') or ''
+                                        if not original_text or not isinstance(original_text, str):
+                                            original_text = "No content available."
+
+                                        # Clean whitespace and add as paragraph
+                                        document.add_paragraph(original_text.strip())
 
 
                                     document.save(doc_io)
