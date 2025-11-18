@@ -1022,7 +1022,7 @@ def main():
                                     
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
-                                        if not isinstance(row, dict):
+                                        if row is None or not isinstance(row, dict):
                                             st.warning(f"Skipping corrupted row at index {i} during Word generation.")
                                             continue
 
@@ -1031,22 +1031,28 @@ def main():
 
                                         all_html_parts.append('<div class="email-header">')
                                         all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
-
                                         all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
-                                        
-                                        # --- ROBUST DATE FIX ---
+
+                                        # Safe date parsing
                                         processed_date = row.get('processedat')
+                                        if isinstance(processed_date, str):
+                                            try:
+                                                processed_date = pd.to_datetime(processed_date)
+                                            except Exception:
+                                                processed_date = None
                                         date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
-                                        
-                                        theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
-                                        all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
+
+                                        theme = row.get('emailtheme')
+                                        theme_str = f" | <b>Theme:</b> {theme}" if theme else ""
+                                        all_html_parts.append(
+                                            f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>"
+                                        )
                                         all_html_parts.append('</div>')
-                                        
-                                        original_html = row.get('emailcontent', '<p>No content available.</p>')
-                                        if not original_html:
-                                            original_html = '<p>No content available.</p>'
-                                        
-                                        # --- Get .msg file path for image extraction ---
+
+                                        # Safe HTML fallback
+                                        original_html = row.get('emailcontent') or '<p>No content available.</p>'
+
+                                        # Blob extraction (optional)
                                         blob_name = row.get('blob_name')
                                         tmp_msg_path = None
                                         if blob_name and pd.notna(blob_name):
@@ -1058,9 +1064,10 @@ def main():
                                                     tmp_file.write(msg_bytes)
                                             except Exception as e:
                                                 st.warning(f"Could not retrieve .msg file {blob_name}: {e}")
-                                        
+
                                         cleaned_html = clean_html_for_export(original_html, temp_dir, tmp_msg_path)
                                         all_html_parts.append(cleaned_html)
+
 
                                     all_html_parts.append('</body></html>')
                                     full_html_content = "".join(all_html_parts)
@@ -1091,38 +1098,36 @@ def main():
                                     
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
-                                        # --- BRUTE-FORCE NONE CHECK ---
-                                        if row is None:
-                                            st.warning(f"Skipping one empty/corrupted row (index {i}).")
+                                        if row is None or not isinstance(row, dict):
+                                            st.warning(f"Skipping corrupted row at index {i} during Word generation.")
                                             continue
-                                        # --- END FIX ---
-                                        # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
                                             document.add_page_break()
-                                        
-                                        # --- Add the standard header ---
+
                                         document.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=2)
                                         document.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=3)
-                                        
-                                        # --- ROBUST DATE FIX ---
+
+                                        # Safe date parsing
                                         processed_date = row.get('processedat')
+                                        if isinstance(processed_date, str):
+                                            try:
+                                                processed_date = pd.to_datetime(processed_date)
+                                            except Exception:
+                                                processed_date = None
                                         date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
 
-                                        theme_str = f" | Theme: {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
+                                        theme = row.get('emailtheme')
+                                        theme_str = f" | Theme: {theme}" if theme else ""
                                         p = document.add_paragraph()
-                                        p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
-                                        
-                                        # --- Clean and add text content ---
-                                        original_html = row.get('emailcontent', '')
-                                        if not original_html:
-                                            original_html = '' 
-                                        
-                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None)                                        
+                                        p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')} | Content Type: {row.get('contenttype', 'N/A')}{theme_str}").bold = True
+
+                                        original_html = row.get('emailcontent') or ''
+                                        cleaned_html = clean_html_for_export(original_html, temp_dir, None)
                                         soup = BeautifulSoup(cleaned_html, 'html.parser')
                                         body_text = soup.get_text(separator='\n', strip=True)
-                                        
                                         document.add_paragraph(body_text)
+
 
                                     document.save(doc_io)
                                     output_docx_bytes = doc_io.getvalue()
