@@ -591,12 +591,12 @@ def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
     Aggressively cleans HTML from the database for Word export.
     - Removes junk text, disclaimers, signatures, and broker logos
     - Optionally resolves CID/base64 images into temp_dir for Pandoc
-    - **Keeps only content BELOW the common warning line**:
+    - Keeps only content BELOW the common warning line:
       "Do not click links or open attachments unless you recognize the sender and know the content is safe."
     """
     if not html_string:
         return ""
-        
+
     soup = BeautifulSoup(html_string, 'html.parser')
 
     # --- FIRST: Keep only content below the warning line ---
@@ -612,20 +612,31 @@ def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
                 break
 
         if warning_node:
+            # Save parent BEFORE removing the warning text
+            container = warning_node.parent
+
             # Remove the warning text itself
             warning_node.extract()
-            # Move up until we are a direct child of "body" (or top-level)
-            container = warning_node.parent
-            while container and container.parent and container.parent is not body and isinstance(container.parent, Tag):
-                container = container.parent
 
-            # Remove everything before `container` at that level
-            prev = container.previous_sibling
-            while prev:
-                to_del = prev
-                prev = prev.previous_sibling
-                if isinstance(to_del, (Tag, NavigableString)):
-                    to_del.extract()
+            # If, for some reason, there is no parent, skip the cropping logic
+            if isinstance(container, Tag):
+                # Walk up until we reach a "top-level" container under <body>
+                while (
+                    container.parent
+                    and container.parent is not body
+                    and isinstance(container.parent, Tag)
+                ):
+                    container = container.parent
+
+                # Now remove everything BEFORE this container at the same level
+                prev = container.previous_sibling
+                while isinstance(prev, (Tag, NavigableString)):
+                    to_del = prev
+                    prev = prev.previous_sibling
+                    if isinstance(to_del, (Tag, NavigableString)) and to_del.parent:
+                        to_del.extract()
+            # else: no valid parent; we already removed the warning text, so just continue
+
 
     # --- Define patterns for removal ---
     removal_patterns = [
