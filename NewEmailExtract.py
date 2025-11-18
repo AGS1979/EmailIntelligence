@@ -1051,7 +1051,8 @@ def main():
 
                                         # Safe HTML fallback
                                         original_text = row.get('originalemail') or '<p>No content available.</p>'
-                                        cleaned_html = f"<p>{original_text.strip().replace('\n', '<br>')}</p>"
+                                        formatted_text = original_text.strip().replace('\n', '<br>')
+                                        cleaned_html = f"<p>{formatted_text}</p>"
 
                                         # Blob extraction (optional)
                                         blob_name = row.get('blob_name')
