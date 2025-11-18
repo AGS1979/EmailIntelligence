@@ -1023,21 +1023,15 @@ def main():
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
                                         if not isinstance(row, dict):
-                                            st.warning(f"Skipping one unexpected row (index {i}) during export.")
+                                            st.warning(f"Skipping corrupted row at index {i} during Word generation.")
                                             continue
-                                        # --- BRUTE-FORCE NONE CHECK ---
-                                        if row is None:
-                                            st.warning(f"Skipping one empty/corrupted row (index {i}).")
-                                            continue
-                                        # --- END FIX ---
-                                        # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
                                             all_html_parts.append('<div style="page-break-before: always;"></div>')
 
-                                        # --- Add the standard header ---
                                         all_html_parts.append('<div class="email-header">')
                                         all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
+
                                         all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
                                         
                                         # --- ROBUST DATE FIX ---
