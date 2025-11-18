@@ -586,55 +586,82 @@ def generate_sas_url(container_name, blob_name):
     except Exception:
         return None
 
-# ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
-# ⭐️ --- NEW AGGRESSIVE HTML CLEANING FUNCTION --- ⭐️
-# ⭐️ --- NEW ALL-IN-ONE EXPORT CLEANING FUNCTION --- ⭐️
 def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
     """
     Aggressively cleans HTML from the database for Word export.
-    This function removes ALL junk text, disclaimers, and signatures,
-    and also processes images and fixes layout for Pandoc.
+    - Removes junk text, disclaimers, signatures, and broker logos
+    - Optionally resolves CID/base64 images into temp_dir for Pandoc
+    - **Keeps only content BELOW the common warning line**:
+      "Do not click links or open attachments unless you recognize the sender and know the content is safe."
     """
     if not html_string:
         return ""
         
     soup = BeautifulSoup(html_string, 'html.parser')
-    
+
+    # --- FIRST: Keep only content below the warning line ---
+    warning_phrase = "do not click links or open attachments unless you recognize the sender and know the content is safe"
+    body = soup.body or soup
+
+    if body:
+        warning_node = None
+        for text_node in body.find_all(string=True):
+            text_norm = str(text_node).strip().lower()
+            if warning_phrase in text_norm:
+                warning_node = text_node
+                break
+
+        if warning_node:
+            # Remove the warning text itself
+            warning_node.extract()
+            # Move up until we are a direct child of "body" (or top-level)
+            container = warning_node.parent
+            while container and container.parent and container.parent is not body and isinstance(container.parent, Tag):
+                container = container.parent
+
+            # Remove everything before `container` at that level
+            prev = container.previous_sibling
+            while prev:
+                to_del = prev
+                prev = prev.previous_sibling
+                if isinstance(to_del, (Tag, NavigableString)):
+                    to_del.extract()
+
     # --- Define patterns for removal ---
     removal_patterns = [
-        # --- Classification/Warnings ---
+        # Classification / warnings (already partially handled, but safe to keep)
         re.compile(r'Classification: Wisayah', re.I),
         re.compile(r'This is classified as Wisayah', re.I),
         re.compile(r'CAUTION: This email has been sent from outside', re.I),
         re.compile(r"don't often get email from", re.I),
-        
-        # --- Junk text artifacts ---
+
+        # Junk text artifacts
         re.compile(r'^\s*Just text\s*$', re.I),
         re.compile(r'^\s*The following table:\s*$', re.I),
-        
-        # --- Email Headers (as individual lines) ---
+
+        # Email headers
         re.compile(r'^\s*From:', re.I),
         re.compile(r'^\s*Sent:', re.I),
         re.compile(r'^\s*To:', re.I),
         re.compile(r'^\s*Subject:', re.I),
 
-        # --- Signatures / Analyst Names ---
+        # Common names / signatures (extend as needed)
         re.compile(r'Eric Robertsen', re.I),
         re.compile(r'Jordan Isvy', re.I),
         re.compile(r'Carlos Eduardo Garcia Martinez', re.I),
-        
-        # --- Disclaimers ---
+
+        # Disclaimers / boilerplate (extend list as needed)
         re.compile(r'Disclosures appendix', re.I),
-        re.compile(r'Copyright \d{4}', re.I),
+        re.compile(r'All rights reserved', re.I),
         re.compile(r'intended for institutional investors', re.I),
         re.compile(r'If you are in scope for MiFID II', re.I),
         re.compile(r'For analyst certifications and important disclosures', re.I),
-        re.compile(r'All rights reserved', re.I),
         re.compile(r'https://research.sc.com/Portal/Public/TermsConditions', re.I),
         re.compile(r'MiFID II research and inducement rules apply', re.I),
         re.compile(r'SCB accepts no liability', re.I),
+        re.compile(r'Copyright \d{4}', re.I),
 
-        # --- Navigation / Buttons ---
+        # Navigation / buttons
         re.compile(r'^\s*Read Now\s*$', re.I),
         re.compile(r'^\s*Continue Reading\s*$', re.I),
         re.compile(r'^\s*Explore Hub\s*$', re.I),
@@ -643,155 +670,142 @@ def clean_html_for_export(html_string, temp_dir, msg_file_path=None):
         re.compile(r"Can't open the report\?", re.I),
         re.compile(r'Scan code to view the report', re.I)
     ]
-    
+
     logo_alt_patterns = [
         re.compile(r'logo', re.I),
         re.compile(r'podcast', re.I),
-        re.compile(r'Listen', re.I),
+        re.compile(r'listen', re.I),
         re.compile(r'barclays', re.I),
-        re.compile(r'standard charte', re.I),
-        re.compile(r'aranca', re.I)
+        re.compile(r'standard charter', re.I),
+        re.compile(r'morgan stanley', re.I),
+        re.compile(r'bank of america', re.I),
+        re.compile(r'ubs', re.I),
+        re.compile(r'j\.p\.? morgan', re.I),
+        re.compile(r'aranca', re.I),
     ]
 
     # --- Removal Pass 1: Text-based junk ---
-    all_text_nodes = soup(string=True)
+    all_text_nodes = list(soup.find_all(string=True))
     nodes_to_decompose = set()
 
     for text_node in all_text_nodes:
         node_text = str(text_node).strip()
         if not node_text:
             continue
-            
+
         for pattern in removal_patterns:
             if pattern.search(node_text):
                 parent_to_remove = None
-                current = text_node.find_parent()
-                
+                current = text_node.parent
+
                 while current and current.name != 'body':
-                    # Find the most likely "block" to remove
-                    if current.name in ['tr', 'p', 'div']:
+                    if current.name in ['tr', 'p', 'div', 'span']:
                         parent_to_remove = current
                         break
-                    # If it's in a table cell, go up to the row
                     if current.name == 'td':
-                         row = current.find_parent('tr')
-                         if row:
-                             parent_to_remove = row
-                             break
-                    current = current.find_parent()
-                
+                        row = current.find_parent('tr')
+                        if row:
+                            parent_to_remove = row
+                            break
+                    current = current.parent
+
                 if parent_to_remove:
                     nodes_to_decompose.add(parent_to_remove)
-                break # Move to the next text node
+                else:
+                    nodes_to_decompose.add(text_node)
+                break
 
-    # Decompose in a separate loop
     for node in nodes_to_decompose:
-        if node.find_parent(): 
+        if node and node.parent:
             node.decompose()
 
     # --- Removal Pass 2: Image-based junk (logos, spacers) ---
     for img_tag in soup.find_all('img'):
-        alt_text = img_tag.get('alt', '')
-        src_text = img_tag.get('src', '')
+        alt_text = img_tag.get('alt', '') or ''
+        src_text = img_tag.get('src', '') or ''
         is_junk = False
-        
+
         for pattern in logo_alt_patterns:
             if pattern.search(alt_text) or pattern.search(src_text):
                 is_junk = True
                 break
-        
+
         if is_junk:
             parent_to_remove = img_tag.find_parent('tr') or img_tag.find_parent('p') or img_tag
-            if parent_to_remove and parent_to_remove.find_parent():
-                 parent_to_remove.decompose()
-            elif img_tag.find_parent():
-                 img_tag.decompose()
-            continue # This was junk, skip to next image
-            
-        # --- Process REMAINING images (Charts, etc.) ---
+            if parent_to_remove and parent_to_remove.parent:
+                parent_to_remove.decompose()
+            continue
+
+        # Process remaining (charts etc.)
         src = img_tag.get('src')
         if not src:
             img_tag.decompose()
             continue
-        
-        # Reset styles to prevent Word from breaking layout
+
+        # Reset styles so Word/Pandoc is happy
         for attr in ['style', 'border', 'align', 'class']:
             if img_tag.has_attr(attr):
                 del img_tag[attr]
-        # Set a style that Pandoc handles well
         img_tag['style'] = 'max-width: 100%; height: auto; display: block;'
-        
+
         image_data = None
-        
-        # Handle Base64
+
+        # Base64 images
         if src.startswith('data:image'):
             try:
                 header, encoded = src.split(',', 1)
                 image_data = base64.b64decode(encoded)
-            except Exception as e:
-                st.warning(f"Could not decode a Base64 image: {e}")
+            except Exception:
                 img_tag.decompose()
                 continue
-        # Handle CID
+
+        # CID images from .msg
         elif src.startswith('cid:') and msg_file_path:
             try:
                 with Message(msg_file_path) as msg:
                     cid = src[4:]
-                    cid_attachments = {att.cid: att for att in msg.attachments if getattr(att, 'cid', None)}
+                    cid_attachments = {
+                        att.cid: att for att in msg.attachments if getattr(att, 'cid', None)
+                    }
                     if cid in cid_attachments:
                         image_data = cid_attachments[cid].data
                     else:
                         img_tag.decompose()
                         continue
-            except Exception as e:
-                st.warning(f"Could not process CID image '{src}': {e}")
+            except Exception:
                 img_tag.decompose()
                 continue
-        
-        if image_data:
+
+        if image_data and temp_dir:
             try:
                 img_type = Image.open(io.BytesIO(image_data)).format.lower() or 'png'
                 img_filename = f"{uuid.uuid4()}.{img_type}"
                 temp_img_path = os.path.join(temp_dir, img_filename)
-                
                 with open(temp_img_path, "wb") as f:
                     f.write(image_data)
-                    
                 img_tag['src'] = temp_img_path
-            except Exception as img_e:
-                st.warning(f"Failed to process and save image: {img_e}")
+            except Exception:
                 img_tag.decompose()
         elif not src.startswith('data:image'):
-             img_tag.decompose() # Remove broken CIDs, etc.
+            img_tag.decompose()
 
     # --- Fix table layouts ---
     for table in soup.find_all('table'):
-        # Remove attributes that cause layout issues in Word
         for attr in ['width', 'height', 'style', 'border', 'align', 'cellpadding', 'cellspacing', 'class']:
             if table.has_attr(attr):
                 del table[attr]
-        # Apply a more flexible style that Pandoc understands
         table['style'] = 'border-collapse: collapse; max-width: 100%;'
-        
-        # Apply style to all cells
+
         for cell in table.find_all(['td', 'th']):
             for attr in ['style', 'border', 'align', 'class']:
-                 if cell.has_attr(attr):
+                if cell.has_attr(attr):
                     del cell[attr]
-            # Add simple border and vertical alignment
             cell['style'] = 'border: 1px solid #ddd; padding: 4px; vertical-align: top;'
 
-    # --- THIS IS THE CRITICAL LAYOUT FIX ---
-    # Find the main content body.
-    main_content_node = soup.find('div', class_='WordSection1') or soup.body
-    
-    if main_content_node:
-        # Return *only the inner HTML* of the body.
-        # This prevents nested <body> tags, which causes the "single column table" bug.
-        return main_content_node.decode_contents()
-    else:
-        # Fallback for HTML fragments that don't have a <body>.
-        return str(soup)
+    # --- Return only the main content ---
+    main_content_node = soup.find('div', class_='WordSection1') or soup.body or soup
+    return main_content_node.decode_contents()
+
 
 
 # --- MAIN UI ---
@@ -1019,8 +1033,7 @@ def main():
                                         f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
                                         f"<p>Total Emails: {len(list_of_rows)}</p>"
                                     ]
-                                    
-                                    # --- REWORK: Iterate over the list of dicts ---
+
                                     for i, row in enumerate(list_of_rows):
                                         if row is None or not isinstance(row, dict):
                                             st.warning(f"Skipping corrupted row at index {i} during Word generation.")
@@ -1029,32 +1042,42 @@ def main():
                                         if i > 0:
                                             all_html_parts.append('<div style="page-break-before: always;"></div>')
 
+                                        # Header
                                         all_html_parts.append('<div class="email-header">')
-                                        all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
-                                        all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
+                                        all_html_parts.append(
+                                            f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>"
+                                        )
+                                        all_html_parts.append(
+                                            f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>"
+                                        )
 
-                                        # Safe date parsing
                                         processed_date = row.get('processedat')
                                         if isinstance(processed_date, str):
                                             try:
                                                 processed_date = pd.to_datetime(processed_date)
                                             except Exception:
                                                 processed_date = None
-                                        date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
+                                        date_str = (
+                                            processed_date.strftime('%Y-%m-%d %H:%M')
+                                            if isinstance(processed_date, (datetime, pd.Timestamp))
+                                            else 'N/A'
+                                        )
 
                                         theme = row.get('emailtheme')
                                         theme_str = f" | <b>Theme:</b> {theme}" if theme else ""
                                         all_html_parts.append(
-                                            f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>"
+                                            f"<p><b>Date:</b> {date_str} | "
+                                            f"<b>Broker:</b> {row.get('brokername', 'N/A')} | "
+                                            f"<b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>"
                                         )
                                         all_html_parts.append('</div>')
 
-                                        # Safe HTML fallback
-                                        original_text = row.get('originalemail') or '<p>No content available.</p>'
-                                        formatted_text = original_text.strip().replace('\n', '<br>')
-                                        cleaned_html = f"<p>{formatted_text}</p>"
+                                        # --- REAL CONTENT FROM HTML (emailcontent) ---
+                                        html_from_db = row.get('emailcontent') or ''
+                                        if not isinstance(html_from_db, str):
+                                            html_from_db = str(html_from_db or '')
 
-                                        # Blob extraction (optional)
+                                        # Blob extraction (optional, needed for CID images)
                                         blob_name = row.get('blob_name')
                                         tmp_msg_path = None
                                         if blob_name and pd.notna(blob_name):
@@ -1066,9 +1089,41 @@ def main():
                                                     tmp_file.write(msg_bytes)
                                             except Exception as e:
                                                 st.warning(f"Could not retrieve .msg file {blob_name}: {e}")
+                                                tmp_msg_path = None
 
-                                        # You can skip aggressive cleaning since we're using plain text
+                                        cleaned_html = clean_html_for_export(
+                                            html_from_db,
+                                            temp_dir=temp_dir,
+                                            msg_file_path=tmp_msg_path
+                                        )
+
+                                        if not cleaned_html.strip():
+                                            cleaned_html = "<p>No content available.</p>"
+
                                         all_html_parts.append(cleaned_html)
+
+                                    all_html_parts.append('</body></html>')
+                                    full_html_content = "".join(all_html_parts)
+
+                                    output_filename = os.path.join(temp_dir, "output.docx")
+
+                                    pypandoc.convert_text(
+                                        full_html_content,
+                                        'docx',
+                                        format='html',
+                                        outputfile=output_filename,
+                                        extra_args=[
+                                            f'--resource-path={temp_dir}',
+                                            '--wrap=none',
+                                            '--standalone',
+                                            '-V', 'geometry:landscape',
+                                            '-V', 'geometry:margin=0.5in'
+                                        ]
+                                    )
+
+                                    with open(output_filename, "rb") as f:
+                                        output_docx_bytes = f.read()
+
 
 
                                     all_html_parts.append('</body></html>')
@@ -1124,12 +1179,21 @@ def main():
                                         p = document.add_paragraph()
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')} | Content Type: {row.get('contenttype', 'N/A')}{theme_str}").bold = True
 
-                                        original_text = row.get('emailmessage') or ''
-                                        if not original_text or not isinstance(original_text, str):
-                                            original_text = "No content available."
+                                        html_from_db = row.get('emailcontent') or ''
+                                        if not isinstance(html_from_db, str):
+                                            html_from_db = str(html_from_db or '')
 
-                                        # Clean whitespace and add as paragraph
-                                        document.add_paragraph(original_text.strip())
+                                        # Reuse the same cleaner (cropping below warning + removing logos/disclaimers)
+                                        cleaned_html = clean_html_for_export(html_from_db, temp_dir=temp_dir)
+                                        plain_text = BeautifulSoup(cleaned_html, 'html.parser').get_text('\n')
+
+                                        # Normalize whitespace a bit
+                                        plain_text = re.sub(r'\n{3,}', '\n\n', plain_text).strip()
+                                        if not plain_text:
+                                            plain_text = "No content available."
+
+                                        document.add_paragraph(plain_text)
+
 
 
                                     document.save(doc_io)
