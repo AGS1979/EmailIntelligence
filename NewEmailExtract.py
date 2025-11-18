@@ -495,6 +495,9 @@ def process_emails(email_source, source_type, email_theme=None):
             continue
         
         # ⭐️ Use the *already-cleaned* plain_body for the LLM
+        
+        extracted = extract_info_with_chatgpt(subject, plain_body, master_brokers)
+
         # --- START OF NEW DEBUG CODE ---
         if not extracted or "reports" not in extracted or not extracted["reports"]:
             status_container.warning(f"⚠️ OpenAI failed to extract any reports from: '{subject}'. Nothing will be saved for this email.")
