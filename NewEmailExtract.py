@@ -537,7 +537,14 @@ def process_emails(email_source, source_type, email_theme=None):
                 report['EmailTheme'] = None # Explicitly set to None for clarity
 
             company_to_find = report.get("Company", "N/A")
-            matched_row, match_status = find_company_in_master(report, master_companies_df.copy())
+            
+            # --- NEW: Skip matching for macro/thematic reports ---
+            if company_to_find in ['Macro Report', 'Thematic Report', 'Strategy Note', 'Macro Note', 'Thematic Note']:
+                matched_row = None
+                match_status = "N/A (Macro Report)"
+            else:
+                # Only run matching for actual companies
+                matched_row, match_status = find_company_in_master(report, master_companies_df.copy())
 
             if matched_row is not None:
                 report["Company"] = matched_row['short_name']
@@ -991,7 +998,9 @@ def main():
                                         all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
                                         all_html_parts.append('</div>')
                                         
-                                        original_html = row.get('emailcontent', '<p>No content available.</p>')
+                                        original_html = row.get('emailcontent')
+                                        if not original_html:
+                                            original_html = '<p>No content available.</p>'
                                         
                                         # --- Get .msg file path for image extraction ---
                                         blob_name = row.get('blob_name')
@@ -1050,7 +1059,9 @@ def main():
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
                                         
                                         # --- Clean and add text content ---
-                                        original_html = row.get('emailcontent', '')
+                                        original_html = row.get('emailcontent')
+                                        if not original_html:
+                                            original_html = '' # Keep as empty string for text only
                                         
                                         # Use the *same* aggressive cleaning function
                                         # We don't need temp_dir or msg_path since we're stripping images anyway
