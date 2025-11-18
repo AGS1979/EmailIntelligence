@@ -958,6 +958,16 @@ def main():
                     key="download_format_radio"
                 )
 
+                # ⭐️ --- REWORKED WORD DOCUMENT GENERATION LOGIC --- ⭐️
+                st.write("---") 
+                st.subheader(f"Download Filtered Email Content ({len(filtered_df)} emails)")
+                
+                download_format = st.radio(
+                    "Select download content:",
+                    ["Text, Charts, and Tables", "Text Only"],
+                    key="download_format_radio"
+                )
+
                 if st.button(f"Generate Word Document", key="generate_word_btn"):
                     with st.spinner("Generating Word document... This may take a moment."):
                         
@@ -967,6 +977,11 @@ def main():
 
                         try:
                             with tempfile.TemporaryDirectory() as temp_dir:
+                                
+                                # --- REWORK: Convert DataFrame to list of dicts for safe iteration ---
+                                list_of_rows = df_for_export.to_dict('records')
+                                # 'list_of_rows' is now a standard Python list:
+                                # [ {'company': 'A', 'ticker': 'T1'}, {'company': 'B', 'ticker': 'T2'} ]
                                 
                                 # ⭐️ --- OPTION 1: TEXT, CHARTS, AND TABLES (PANDOC METHOD) --- ⭐️
                                 if download_format == "Text, Charts, and Tables":
@@ -982,14 +997,12 @@ def main():
                                         '</head><body>',
                                         f"<h1>Filtered Email Intelligence Report</h1>",
                                         f"<p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
-                                        f"<p>Total Emails: {len(df_for_export)}</p>"
+                                        f"<p>Total Emails: {len(list_of_rows)}</p>"
                                     ]
-
-                                    for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                        # --- FIX 1: Skip if row is bad ---
-                                        if row is None:
-                                            continue
-                                        # --- END FIX ---
+                                    
+                                    # --- REWORK: Iterate over the list of dicts ---
+                                    for i, row in enumerate(list_of_rows):
+                                        # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
                                             all_html_parts.append('<div style="page-break-before: always;"></div>')
@@ -998,17 +1011,18 @@ def main():
                                         all_html_parts.append('<div class="email-header">')
                                         all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                         all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
+                                        
+                                        # --- ROBUST DATE FIX ---
                                         processed_date = row.get('processedat')
                                         date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
+                                        
                                         theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
                                         all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
                                         all_html_parts.append('</div>')
                                         
-                                        # --- FIX 2: More robust default for html ---
-                                        original_html = row.get('emailcontent', '<p>No content available.</p>') # Default 1
-                                        if not original_html: # Default 2 (for None or empty string)
+                                        original_html = row.get('emailcontent', '<p>No content available.</p>')
+                                        if not original_html:
                                             original_html = '<p>No content available.</p>'
-                                        # --- END FIX ---
                                         
                                         # --- Get .msg file path for image extraction ---
                                         blob_name = row.get('blob_name')
@@ -1023,7 +1037,6 @@ def main():
                                             except Exception as e:
                                                 st.warning(f"Could not retrieve .msg file {blob_name}: {e}")
                                         
-                                        # ⭐️ USE THE NEW AGGRESSIVE CLEANING FUNCTION
                                         cleaned_html = clean_html_for_export(original_html, temp_dir, tmp_msg_path)
                                         all_html_parts.append(cleaned_html)
 
@@ -1042,7 +1055,7 @@ def main():
                                             '--wrap=none',
                                             '--standalone',
                                             '-V', 'geometry:landscape',
-                                            '-V', 'geometry:margin=0.5in' # Using 0.5in margin
+                                            '-V', 'geometry:margin=0.5in'
                                         ]
                                     )
                                     
@@ -1053,12 +1066,10 @@ def main():
                                 else: # download_format == "Text Only"
                                     document = docx.Document()
                                     doc_io = io.BytesIO()
-
-                                    for i, (index, row) in enumerate(df_for_export.iterrows()):
-                                        # --- FIX 1: Skip if row is bad ---
-                                        if row is None:
-                                            continue
-                                        # --- END FIX ---
+                                    
+                                    # --- REWORK: Iterate over the list of dicts ---
+                                    for i, row in enumerate(list_of_rows):
+                                        # 'row' is now a dictionary, so row.get() is safe.
 
                                         if i > 0:
                                             document.add_page_break()
@@ -1066,24 +1077,24 @@ def main():
                                         # --- Add the standard header ---
                                         document.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=2)
                                         document.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=3)
+                                        
+                                        # --- ROBUST DATE FIX ---
                                         processed_date = row.get('processedat')
                                         date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
+
                                         theme_str = f" | Theme: {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
                                         p = document.add_paragraph()
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
                                         
                                         # --- Clean and add text content ---
-                                        original_html = row.get('emailcontent', '') # Default 1
+                                        original_html = row.get('emailcontent', '')
                                         if not original_html:
-                                            original_html = '' # Keep as empty string for text only
+                                            original_html = '' 
                                         
-                                        # Use the *same* aggressive cleaning function
-                                        # We don't need temp_dir or msg_path since we're stripping images anyway
                                         cleaned_html = clean_html_for_export(original_html, temp_dir, None)                                        
                                         soup = BeautifulSoup(cleaned_html, 'html.parser')
                                         body_text = soup.get_text(separator='\n', strip=True)
                                         
-                                        # Add the cleaned text
                                         document.add_paragraph(body_text)
 
                                     document.save(doc_io)
@@ -1096,7 +1107,6 @@ def main():
 
                         except Exception as e:
                             st.error(f"Failed to generate Word document. Error: {e}")
-                            # For debugging, you can write the problematic HTML to a file
                             if 'full_html_content' in locals():
                                 with open(os.path.join(temp_dir, "debug.html"), "w", encoding="utf-8") as f:
                                     f.write(full_html_content)
