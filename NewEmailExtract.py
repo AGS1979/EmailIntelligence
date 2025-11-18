@@ -963,25 +963,45 @@ def main():
                     with st.spinner("Generating Word document... This may take a moment."):
                         
                         df_for_export = filtered_df.copy()
+
+                        # Sort by processed date if present
                         if 'processedat' in df_for_export.columns:
                             df_for_export.sort_values(by='processedat', ascending=False, inplace=True)
 
+                        # Drop rows that have no email content at all – these are not useful for export
+                        if 'emailcontent' in df_for_export.columns:
+                            df_for_export = df_for_export[df_for_export['emailcontent'].notna()]
+
                         try:
                             with tempfile.TemporaryDirectory() as temp_dir:
-                                
-                                # --- REWORK: Convert DataFrame to list of dicts for safe iteration ---
+
+                                # Convert DataFrame to list of dicts for safe iteration
                                 all_rows = df_for_export.to_dict('records')
-                                
-                                # --- ROBUSTNESS FIX: Filter out corrupted rows ---
-                                # This checks for any 'None' objects that might have
-                                # been created from corrupted data in the database.
-                                list_of_rows = [row for row in all_rows if row is not None]
-                                corrupted_count = len(all_rows) - len(list_of_rows)
+
+                                list_of_rows = []
+                                corrupted_count = 0
+
+                                for idx, row in enumerate(all_rows):
+                                    # Extra safety: only keep rows that are proper dicts
+                                    if not isinstance(row, dict):
+                                        corrupted_count += 1
+                                        st.warning(
+                                            f"Skipping unexpected row type at index {idx}: {type(row)}"
+                                        )
+                                        continue
+                                    list_of_rows.append(row)
+
                                 if corrupted_count > 0:
-                                    st.warning(f"Filtered out {corrupted_count} corrupted or empty email rows. The export will continue.")
-                                # --- END FIX ---
-                                # 'list_of_rows' is now a standard Python list:
-                                # [ {'company': 'A', 'ticker': 'T1'}, {'company': 'B', 'ticker': 'T2'} ]
+                                    st.warning(
+                                        f"Filtered out {corrupted_count} corrupted/empty email rows. "
+                                        "The export will continue with the remaining rows."
+                                    )
+
+                                # If for some reason nothing valid remains, abort cleanly
+                                if not list_of_rows:
+                                    st.error("No valid email rows to export. Please adjust filters and try again.")
+                                    return
+
                                 
                                 # ⭐️ --- OPTION 1: TEXT, CHARTS, AND TABLES (PANDOC METHOD) --- ⭐️
                                 if download_format == "Text, Charts, and Tables":
@@ -1002,6 +1022,9 @@ def main():
                                     
                                     # --- REWORK: Iterate over the list of dicts ---
                                     for i, row in enumerate(list_of_rows):
+                                        if not isinstance(row, dict):
+                                            st.warning(f"Skipping one unexpected row (index {i}) during export.")
+                                            continue
                                         # --- BRUTE-FORCE NONE CHECK ---
                                         if row is None:
                                             st.warning(f"Skipping one empty/corrupted row (index {i}).")
@@ -1117,10 +1140,15 @@ def main():
 
                         except Exception as e:
                             st.error(f"Failed to generate Word document. Error: {e}")
-                            if 'full_html_content' in locals():
-                                with open(os.path.join(temp_dir, "debug.html"), "w", encoding="utf-8") as f:
-                                    f.write(full_html_content)
-                                st.info("A 'debug.html' file has been saved in the temp directory for inspection.")
+                            if 'full_html_content' in locals() and 'temp_dir' in locals():
+                                try:
+                                    debug_path = os.path.join(temp_dir, "debug.html")
+                                    with open(debug_path, "w", encoding="utf-8") as f:
+                                        f.write(full_html_content)
+                                    st.info(f"A 'debug.html' file has been saved in the temp directory for inspection: {debug_path}")
+                                except Exception as dbg_e:
+                                    st.warning(f"Could not write debug.html: {dbg_e}")
+
 
                         st.rerun()
 
