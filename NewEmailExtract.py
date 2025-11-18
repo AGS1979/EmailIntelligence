@@ -970,7 +970,16 @@ def main():
                             with tempfile.TemporaryDirectory() as temp_dir:
                                 
                                 # --- REWORK: Convert DataFrame to list of dicts for safe iteration ---
-                                list_of_rows = df_for_export.to_dict('records')
+                                all_rows = df_for_export.to_dict('records')
+                                
+                                # --- ROBUSTNESS FIX: Filter out corrupted rows ---
+                                # This checks for any 'None' objects that might have
+                                # been created from corrupted data in the database.
+                                list_of_rows = [row for row in all_rows if row is not None]
+                                corrupted_count = len(all_rows) - len(list_of_rows)
+                                if corrupted_count > 0:
+                                    st.warning(f"Filtered out {corrupted_count} corrupted or empty email rows. The export will continue.")
+                                # --- END FIX ---
                                 # 'list_of_rows' is now a standard Python list:
                                 # [ {'company': 'A', 'ticker': 'T1'}, {'company': 'B', 'ticker': 'T2'} ]
                                 
