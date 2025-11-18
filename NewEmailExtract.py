@@ -1124,7 +1124,7 @@ def main():
                                         p = document.add_paragraph()
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')} | Content Type: {row.get('contenttype', 'N/A')}{theme_str}").bold = True
 
-                                        original_text = row.get('originalemail') or ''
+                                        original_text = row.get('emailmessage') or ''
                                         if not original_text or not isinstance(original_text, str):
                                             original_text = "No content available."
 
