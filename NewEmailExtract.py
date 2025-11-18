@@ -998,7 +998,8 @@ def main():
                                         all_html_parts.append('<div class="email-header">')
                                         all_html_parts.append(f"<h2>Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})</h2>")
                                         all_html_parts.append(f"<h3>Subject: {row.get('emailsubject', 'No Subject')}</h3>")
-                                        date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
+                                        processed_date = row.get('processedat')
+                                        date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
                                         theme_str = f" | <b>Theme:</b> {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
                                         all_html_parts.append(f"<p><b>Date:</b> {date_str} | <b>Broker:</b> {row.get('brokername', 'N/A')} | <b>Content Type:</b> {row.get('contenttype', 'N/A')}{theme_str}</p>")
                                         all_html_parts.append('</div>')
@@ -1065,7 +1066,8 @@ def main():
                                         # --- Add the standard header ---
                                         document.add_heading(f"Company: {row.get('company', 'N/A')} ({row.get('ticker', 'N/A')})", level=2)
                                         document.add_heading(f"Subject: {row.get('emailsubject', 'No Subject')}", level=3)
-                                        date_str = row.get('processedat').strftime('%Y-%m-%d %H:%M') if pd.notna(row.get('processedat')) else 'N/A'
+                                        processed_date = row.get('processedat')
+                                        date_str = processed_date.strftime('%Y-%m-%d %H:%M') if isinstance(processed_date, (datetime, pd.Timestamp)) else 'N/A'
                                         theme_str = f" | Theme: {row.get('emailtheme', 'N/A')}" if pd.notna(row.get('emailtheme')) else ""
                                         p = document.add_paragraph()
                                         p.add_run(f"Date: {date_str} | Broker: {row.get('brokername', 'N/A')}{theme_str}").bold = True
